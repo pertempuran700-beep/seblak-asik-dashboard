@@ -23,6 +23,7 @@ export default function EmployeeForm({ employee, onSuccess, onClose }) {
     email: employee?.email || '',
     role: employee?.role || 'employee',
     join_date: employee?.join_date || new Date().toISOString().slice(0, 10),
+    telegram_id: employee?.telegram_id || '',
   });
   const [submitting, setSubmitting] = useState(false);
   const toast = useToast();
@@ -63,8 +64,11 @@ export default function EmployeeForm({ employee, onSuccess, onClose }) {
         <Input label="Bank" value={form.bank_name} onChange={(e) => set('bank_name', e.target.value)} />
         <Input label="No. Rekening" value={form.bank_account} onChange={(e) => set('bank_account', e.target.value)} />
       </div>
-      <Input label="No. HP" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
-      <Input label="Email (untuk login)" type="email" required value={form.email} onChange={(e) => set('email', e.target.value)} />
+      <div className="grid grid-cols-2 gap-3">
+        <Input label="No. HP" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
+        <Input label="Email (untuk login)" type="email" required value={form.email} onChange={(e) => set('email', e.target.value)} />
+      </div>
+      <Input label="ID Telegram (Opsional - Cek dari @userinfobot)" type="text" value={form.telegram_id} onChange={(e) => set('telegram_id', e.target.value)} />
       <Input label="Tanggal Bergabung" type="date" value={form.join_date} onChange={(e) => set('join_date', e.target.value)} />
       <Button type="submit" full disabled={submitting}>
         {submitting ? 'Menyimpan...' : isEdit ? 'Simpan Perubahan' : 'Tambah Karyawan'}
