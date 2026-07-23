@@ -16,11 +16,23 @@ export default function AbsensiPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // Jika owner/admin ingin melihat semua riwayat, bisa ditarik tanpa employeeId atau spesifik
+  // Menarik data summary
   const { data: summary, refetch } = useData(
     () => (user ? api.getAttendanceSummary(user.role === 'owner' || user.role === 'admin' ? null : user.employee_id, period) : Promise.resolve(null)),
     [user, period]
   );
+
+  // Mencari data absensi karyawan spesifik untuk HARI INI guna menampilkan Pop-up Banner
+  const today = new Date();
+  const todayRecord = summary?.records?.find(r => {
+    // Pastikan kita hanya melihat record milik user yang sedang login
+    if (r.employee_id !== user?.employee_id) return false;
+    
+    const d = new Date(r.date);
+    return d.getDate() === today.getDate() && 
+           d.getMonth() === today.getMonth() && 
+           d.getFullYear() === today.getFullYear();
+  });
 
   const filteredRecords = (summary?.records || []).filter(r => {
     if (!startDate && !endDate) return true;
@@ -37,7 +49,12 @@ export default function AbsensiPage() {
       </div>
 
       <Card>
-        <AttendanceForm employeeId={user?.employee_id} employeeName={user?.full_name} onSuccess={refetch} />
+        <AttendanceForm 
+          employeeId={user?.employee_id} 
+          employeeName={user?.full_name} 
+          todayRecord={todayRecord}
+          onSuccess={refetch} 
+        />
       </Card>
 
       <Card title="Riwayat Kehadiran & Izin Tim">
@@ -85,7 +102,9 @@ export default function AbsensiPage() {
                   label: 'Status',
                   render: (r) => {
                     const isRejected = r.approval_status === 'Rejected';
-                    const displayStatus = isRejected ? 'Absent' : (r.late_minutes > 0 ? 'Late' : r.status);
+                    // Pakai late_minutes berformat string HH:MM yang baru
+                    const isLate = r.late_minutes && r.late_minutes !== '00:00';
+                    const displayStatus = isRejected ? 'Absent' : (isLate ? 'Late' : r.status);
                     const colorClass = displayStatus === 'Absent' ? 'text-danger font-semibold' : displayStatus === 'Late' ? 'text-warning font-semibold' : 'text-success';
                     return <span className={colorClass}>{displayStatus}</span>;
                   },
