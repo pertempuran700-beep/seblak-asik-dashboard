@@ -13,16 +13,15 @@ export default function AbsensiPage() {
   const { user } = useAuth();
   const period = monthPeriodString();
 
-  // State untuk Filter Tanggal (Default hari ini / kosong untuk semua bulan ini)
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  // Jika owner/admin ingin melihat semua riwayat, bisa ditarik tanpa employeeId atau spesifik
   const { data: summary, refetch } = useData(
-    () => (user ? api.getAttendanceSummary(user.employee_id, period) : Promise.resolve(null)),
+    () => (user ? api.getAttendanceSummary(user.role === 'owner' || user.role === 'admin' ? null : user.employee_id, period) : Promise.resolve(null)),
     [user, period]
   );
 
-  // Filter data berdasarkan rentang tanggal jika dipilih
   const filteredRecords = (summary?.records || []).filter(r => {
     if (!startDate && !endDate) return true;
     const rDate = new Date(r.date).toISOString().slice(0, 10);
@@ -32,16 +31,16 @@ export default function AbsensiPage() {
   });
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
+    <div className="space-y-6 max-w-4xl mx-auto">
       <div>
-        <h1 className="text-xl font-bold">✅ Absensi</h1>
+        <h1 className="text-xl font-bold">✅ Absensi Karyawan</h1>
       </div>
 
       <Card>
         <AttendanceForm employeeId={user?.employee_id} employeeName={user?.full_name} onSuccess={refetch} />
       </Card>
 
-      <Card title="Riwayat Kehadiran & Izin">
+      <Card title="Riwayat Kehadiran & Izin Tim">
         {summary ? (
           <>
             <div className="grid grid-cols-4 gap-2 mb-4 text-center">
@@ -59,11 +58,10 @@ export default function AbsensiPage() {
               </div>
               <div>
                 <p className="text-lg font-bold text-danger">{summary.alpha}</p>
-                <p className="text-xs text-textmuted">Alpha</p>
+                <p className="text-xs text-textmuted">Alpha / Ditolak</p>
               </div>
             </div>
 
-            {/* Komponen Filter Tanggal */}
             <div className="grid grid-cols-2 gap-3 mb-4 bg-surface2 p-3 rounded-card">
               <Input label="Dari Tanggal" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
               <Input label="Sampai Tanggal" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
@@ -72,6 +70,7 @@ export default function AbsensiPage() {
             <Table
               columns={[
                 { key: 'date', label: 'Tanggal', render: (r) => formatTanggalPendek(r.date) },
+                { key: 'employee_name', label: 'Nama Karyawan', render: (r) => r.employee_name || r.employee_id },
                 { 
                   key: 'clock_in', 
                   label: 'Jam Masuk', 
@@ -85,9 +84,10 @@ export default function AbsensiPage() {
                   key: 'status',
                   label: 'Status',
                   render: (r) => {
-                    // Paksa teks Late tetap tertulis Late meskipun sudah di-approve
-                    const displayStatus = r.late_minutes > 0 ? 'Late' : r.status;
-                    return <span className={displayStatus === 'Late' ? 'text-warning font-semibold' : 'text-success'}>{displayStatus}</span>;
+                    const isRejected = r.approval_status === 'Rejected';
+                    const displayStatus = isRejected ? 'Absent' : (r.late_minutes > 0 ? 'Late' : r.status);
+                    const colorClass = displayStatus === 'Absent' ? 'text-danger font-semibold' : displayStatus === 'Late' ? 'text-warning font-semibold' : 'text-success';
+                    return <span className={colorClass}>{displayStatus}</span>;
                   },
                 },
                 {
@@ -100,7 +100,7 @@ export default function AbsensiPage() {
                 },
                 {
                   key: 'outside_reason',
-                  label: 'Keterangan / Alasan',
+                  label: 'Alasan / Keterangan',
                   render: (r) => r.outside_reason || r.notes || '-'
                 }
               ]}
