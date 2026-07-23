@@ -17,16 +17,29 @@ import { useToast } from '@/components/ui/Toast';
 export default function KaryawanPage() {
   const { user } = useAuth();
   const isOwner = user?.role === 'owner';
+  const isAdmin = user?.role === 'owner' || user?.role === 'admin';
+  
   const { data: employees, loading, refetch } = useData(() => api.listEmployees(), []);
   const { data: bonusConfigs, refetch: refetchBonus } = useData(() => (isOwner ? api.listBonusConfigs() : Promise.resolve([])), [isOwner]);
   const [tab, setTab] = useState('list');
   const [modal, setModal] = useState(null);
   const [editing, setEditing] = useState(null);
+  
   const { month, year } = currentMonthYear();
+  // Format periode untuk backend yyyy-MM
+  const periodStr = `${year}-${String(month).padStart(2, '0')}`;
+
   const { data: payroll, loading: payrollLoading, refetch: refetchPayroll } = useData(
     () => (tab === 'payroll' ? api.generatePayroll(month, year) : Promise.resolve(null)),
     [tab, month, year]
   );
+
+  // Data Fetching untuk Tab Penilaian Kinerja
+  const { data: performance, loading: performanceLoading } = useData(
+    () => (tab === 'performance' ? api.getPerformanceSummary(periodStr) : Promise.resolve(null)),
+    [tab, periodStr]
+  );
+
   const toast = useToast();
 
   const columns = [
@@ -51,6 +64,7 @@ export default function KaryawanPage() {
     { key: 'total_work_days', label: 'Hari Kerja' },
     { key: 'late_count', label: 'Telat' },
     { key: 'bonus_total', label: 'Bonus', render: (r) => formatRupiah(r.bonus_total) },
+    { key: 'deductions', label: 'Potongan', render: (r) => <span className="text-danger">-{formatRupiah(r.deductions || 0)}</span> },
     { key: 'net_salary', label: 'Gaji Bersih', render: (r) => formatRupiah(r.net_salary) },
     { key: 'payment_status', label: 'Status', render: (r) => <Badge variant={r.payment_status === 'Paid' ? 'success' : 'warning'}>{r.payment_status}</Badge> },
     isOwner && {
@@ -81,6 +95,32 @@ export default function KaryawanPage() {
     { key: 'is_active', label: 'Status', render: (r) => <Badge variant={r.is_active === true || r.is_active === 'TRUE' ? 'success' : 'neutral'}>{r.is_active === true || r.is_active === 'TRUE' ? 'Aktif' : 'Nonaktif'}</Badge> },
   ];
 
+  // Definisi Kolom Penilaian Kinerja
+  const performanceColumns = [
+    { key: 'employee_name', label: 'Nama Karyawan' },
+    { 
+      key: 'score', 
+      label: 'Skor Kinerja', 
+      render: (r) => (
+        <span className={`font-bold text-lg ${r.score >= 90 ? 'text-success' : r.score >= 75 ? 'text-warning' : 'text-danger'}`}>
+          {r.score} / 100
+        </span>
+      ) 
+    },
+    { key: 'late_count', label: 'Telat (-2 Poin)', render: (r) => r.late_count > 0 ? <span className="text-warning font-bold">{r.late_count}x</span> : '-' },
+    { key: 'forgot_clock_out_count', label: 'Lupa C/O (-5 Poin)', render: (r) => r.forgot_clock_out_count > 0 ? <span className="text-warning font-bold">{r.forgot_clock_out_count}x</span> : '-' },
+    { key: 'alpha_count', label: 'Alpha/Ditolak (-10 Poin)', render: (r) => r.alpha_count > 0 ? <span className="text-danger font-bold">{r.alpha_count}x</span> : '-' },
+    { 
+      key: 'evaluation', 
+      label: 'Predikat', 
+      render: (r) => (
+        <Badge variant={r.evaluation === 'Excellent' ? 'success' : r.evaluation === 'Good' ? 'warning' : 'danger'}>
+          {r.evaluation}
+        </Badge>
+      ) 
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -96,6 +136,7 @@ export default function KaryawanPage() {
       <Tabs
         tabs={[
           { value: 'list', label: 'Daftar Karyawan' },
+          { value: 'performance', label: 'Penilaian Kinerja' },
           { value: 'payroll', label: 'Payroll Bulan Ini' },
           ...(isOwner ? [{ value: 'bonus', label: 'Aturan Bonus' }] : []),
         ]}
@@ -106,6 +147,26 @@ export default function KaryawanPage() {
       {tab === 'list' && (
         <Card>
           {loading ? <p className="text-textmuted text-sm text-center py-8">Memuat...</p> : <Table columns={columns} rows={employees || []} />}
+        </Card>
+      )}
+
+      {/* Tampilan Tab Penilaian Kinerja */}
+      {tab === 'performance' && (
+        <Card title={`Rekapitulasi Kinerja Tim - Bulan ${month}/${year}`}>
+          {performanceLoading ? (
+            <p className="text-textmuted text-sm text-center py-8">Menghitung skor kinerja otomatis...</p>
+          ) : (
+            <>
+              <p className="text-sm text-textmuted mb-4">
+                Poin sempurna adalah 100. Sistem otomatis mengurangi poin berdasarkan catatan absensi riil di lapangan.
+              </p>
+              <Table 
+                columns={performanceColumns} 
+                rows={(performance || []).filter(r => isAdmin ? true : r.employee_id === user?.employee_id)} 
+                emptyMessage="Belum ada data absensi/kinerja di bulan ini"
+              />
+            </>
+          )}
         </Card>
       )}
 
