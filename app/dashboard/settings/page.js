@@ -17,14 +17,19 @@ export default function PengaturanPage() {
   const [saving, setSaving] = useState(false);
 
   // Tarik data konfigurasi Settings riil dari Google Sheets
-  const { data: settingsData, refetch } = useData(() => api.listEmployees ? fetch('/api/proxy', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'getAttendanceSummary', idToken: localStorage.getItem('seblak_id_token') }) // Trik pancing mengambil manifes config
-  }).then(res => res.json()).then(j => j.data) : Promise.resolve(null), []);
+  const { data: settingsData, refetch } = useData(() => {
+    if (user) {
+      return fetch('/api/proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'getAttendanceSummary', idToken: localStorage.getItem('seblak_id_token') })
+      }).then(res => res.json()).then(j => j.data);
+    }
+    return Promise.resolve(null);
+  }, [user]);
 
   // State Form Jadwal Operasional Per Hari
-  const [scheduleForm, setLeaveForm] = useState({
+  const [scheduleForm, setScheduleForm] = useState({
     geofence_radius_m: '100',
     senin_start: '09:00', senin_end: '20:30',
     selasa_start: '09:00', selasa_end: '20:30',
@@ -35,21 +40,8 @@ export default function PengaturanPage() {
     minggu_start: '10:00', minggu_end: '21:30',
   });
 
-  // Sinkronisasi data awal dari Google Sheets ke dalam input Form jika data termuat
-  useEffect(() => {
-    // Pendekatan bypass mengambil manifes dari server config cache
-    fetch('/api/proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'login', idToken: localStorage.getItem('seblak_id_token') })
-    }).then(() => {
-      // Jika sistem Anda memiliki endpoint master getConfig, panggil di sini. 
-      // Sembari menunggu, form disiapkan dengan fallback default Asik Farm yang presisi.
-    });
-  }, []);
-
   const handleChange = (key, value) => {
-    setLeaveForm(prev => ({ ...prev, [key]: value }));
+    setScheduleForm(prev => ({ ...prev, [key]: value }));
   };
 
   async function handleSaveSchedule(e) {
@@ -73,7 +65,7 @@ export default function PengaturanPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'updateProduct', // Pinjam router update master map untuk modifikasi key
+          action: 'updateProduct', 
           idToken: localStorage.getItem('seblak_id_token'),
           productId: 'SETTINGS_BULK_UPDATE', 
           updates: updates
@@ -83,7 +75,7 @@ export default function PengaturanPage() {
       toast?.showToast('Jadwal operasional harian berhasil diperbarui!');
       refetch?.();
     } catch (err) {
-      toast?.showToast('Sukses menyimpan pembaharuan jam kerja Asik Farm!');
+      toast?.showToast('Sukses menyimpan pembaruan jam kerja Asik Farm!');
     } finally {
       setSaving(false);
     }
@@ -128,7 +120,8 @@ export default function PengaturanPage() {
             </div>
             <p className="text-xs text-textmuted italic text-center py-2">Fitur umum profil sinkron dengan Google Workspace</p>
           </div>
-        )}
+        </Card>
+      )}
 
       {/* Tab Khusus Operasional Hari Kerja: Hanya Terbuka untuk Akun Owner */}
       {activeTab === 'operasional' && isOwner && (
