@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useData } from '@/hooks/useData';
 import { api } from '@/lib/api';
@@ -13,8 +13,18 @@ export default function AbsensiPage() {
   const { user } = useAuth();
   const period = monthPeriodString();
 
+  // State untuk filter tanggal
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+
+  // Setup default tanggal: Jika Owner/Admin, default filter diatur ke "Hari Ini"
+  useEffect(() => {
+    if (user && (user.role === 'owner' || user.role === 'admin')) {
+      const todayIso = new Date().toISOString().split('T')[0];
+      setStartDate(todayIso);
+      setEndDate(todayIso);
+    }
+  }, [user]);
 
   // Menarik data summary
   const { data: summary, refetch } = useData(
@@ -34,9 +44,17 @@ export default function AbsensiPage() {
            d.getFullYear() === today.getFullYear();
   });
 
+  // Filter logika baru
   const filteredRecords = (summary?.records || []).filter(r => {
     if (!startDate && !endDate) return true;
-    const rDate = new Date(r.date).toISOString().slice(0, 10);
+    
+    // Konversi tanggal record dengan penyesuaian zona waktu lokal yang aman
+    const rDateObj = new Date(r.date);
+    const rYear = rDateObj.getFullYear();
+    const rMonth = String(rDateObj.getMonth() + 1).padStart(2, '0');
+    const rDay = String(rDateObj.getDate()).padStart(2, '0');
+    const rDate = `${rYear}-${rMonth}-${rDay}`;
+
     if (startDate && rDate < startDate) return false;
     if (endDate && rDate > endDate) return false;
     return true;
