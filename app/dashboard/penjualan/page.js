@@ -86,7 +86,7 @@ export default function PenjualanPage() {
     }
   };
 
-  // ==========================================
+ // ==========================================
   // 2. PROSES BACA LAPORAN PRODUK TERJUAL (POP-UP TANGGAL)
   // ==========================================
   const handleProductFileChange = async (e) => {
@@ -98,18 +98,18 @@ export default function PenjualanPage() {
       const workbook = XLSX.read(data, { type: 'array' });
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
 
-      // FIXED: Mengubah range dari 4 menjadi 0 agar langsung mendeteksi baris judul produk
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { range: 0 });
+      // REVISI FINAL: Range diubah menjadi 1. 
+      // Ini akan melompati baris 0 (judul "Total Pemasukan...")
+      // dan langsung membaca baris 1 ("Nama Item", "Jumlah Terjual") sebagai header kolom.
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { range: 1 });
 
       if (jsonData.length === 0) {
-        toast?.showToast('Format laporan produk terjual tidak valid.');
+        toast?.showToast('Format laporan produk terjual tidak valid atau data kosong.');
         return;
       }
 
-      // Simpan data mentah ke state sementara, lalu paksa buka modal tanggal
       setTempProductData(jsonData);
       
-      // Set default tanggal hari ini (2026-07-23) agar user tinggal klik simpan jika sesuai
       const hariIni = new Date().toISOString().split('T')[0];
       setSelectedDate(hariIni);
       setDateModalOpen(true);
