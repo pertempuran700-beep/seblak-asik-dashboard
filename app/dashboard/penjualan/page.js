@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useData } from '@/hooks/useData';
 import { api } from '@/lib/api';
@@ -11,24 +11,18 @@ import { Input } from '@/components/ui/Input';
 import SalesLineChart from '@/components/charts/SalesLineChart';
 import { formatRupiah, formatTanggalPendek } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
-import * as XLSX from 'xlsx';
 
 export default function PenjualanPage() {
   const { user } = useAuth();
   const toast = useToast();
   
-  // Ref untuk masing-masing tombol file input
-  const incomeFileRef = useRef(null);
-  const productFileRef = useRef(null);
-  
-  // State manajemen
-  const [uploadingIncome, setUploadingIncome] = useState(false);
-  const [uploadingProduct, setUploadingProduct] = useState(false);
+  // State manajemen cloud sync
+  const [syncingIncome, setSyncingIncome] = useState(false);
+  const [syncingProduct, setSyncingProduct] = useState(false);
   const [dateModalOpen, setDateModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
-  const [tempProductData, setTempProductData] = useState(null);
 
-  const canUpload = user?.role === 'owner' || user?.role === 'admin';
+  const canSync = user?.role === 'owner' || user?.role === 'admin';
 
   const { data: sales, refetch: refetchSales } = useData(() => api.getSales({}), []);
   const { data: daily, refetch: refetchDaily } = useData(() => api.getDailySummary(), []);
@@ -39,123 +33,81 @@ export default function PenjualanPage() {
     .map((s) => ({ label: formatTanggalPendek(s.date), revenue: Number(s.yang_diterima || s.total || 0) }));
 
   // ==========================================
-  // 1. PROSES UPLOAD LAPORAN PENDAPATAN (CASH & QRIS)
+  // 1. KONEKSI CLOUD SYNC: LAPORAN PENDAPATAN
   // ==========================================
-  const handleIncomeUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setUploadingIncome(true);
+  const handleIncomeSync = async () => {
+    setSyncingIncome(true);
     try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array' });
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-
-      // Melewati 9 baris metadata bawaan mesin kasir
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { range: 9 });
-
-      if (jsonData.length === 0) {
-        toast?.showToast('Data kosong atau format tabel pendapatan tidak sesuai.');
-        return;
-      }
-
       const res = await fetch('/api/proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'importSalesExcel',
-          idToken: localStorage.getItem('seblak_id_token'),
-          transactions: jsonData
+          action: 'syncIncomeFromDrive',
+          idToken: localStorage.getItem('seblak_id_token')
         })
       });
 
       const result = await res.json();
-      if (result.success) {
-        toast?.showToast(result.data.message || 'Laporan Pemasukan berhasil disinkronkan!');
+      if (result.success && result.data.imported_count > 0) {
+        toast?.showToast(result.data.message || 'Sinkronisasi pemasukan cloud berhasil!');
         refetchSales();
         refetchDaily();
+      } else if (result.success && result.data.imported_count === 0) {
+        toast?.showToast('Folder Drive kosong atau tidak ada transaksi baru untuk di-import.');
       } else {
-        toast?.showToast('Gagal memproses data: ' + result.error);
+        toast?.showToast('Gagal sinkronisasi: ' + result.error);
       }
     } catch (err) {
       console.error(err);
-      toast?.showToast('Gagal membaca file pendapatan.');
+      toast?.showToast('Terjadi kesalahan jaringan saat menghubungi Google Drive.');
     } finally {
-      setUploadingIncome(false);
-      if (incomeFileRef.current) incomeFileRef.current.value = '';
+      setSyncingIncome(false);
     }
   };
 
- // ==========================================
-  // 2. PROSES BACA LAPORAN PRODUK TERJUAL (POP-UP TANGGAL)
   // ==========================================
-  const handleProductFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array' });
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-
-      // REVISI FINAL: Range diubah menjadi 1. 
-      // Ini akan melompati baris 0 (judul "Total Pemasukan...")
-      // dan langsung membaca baris 1 ("Nama Item", "Jumlah Terjual") sebagai header kolom.
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { range: 1 });
-
-      if (jsonData.length === 0) {
-        toast?.showToast('Format laporan produk terjual tidak valid atau data kosong.');
-        return;
-      }
-
-      setTempProductData(jsonData);
-      
-      const hariIni = new Date().toISOString().split('T')[0];
-      setSelectedDate(hariIni);
-      setDateModalOpen(true);
-
-    } catch (err) {
-      console.error(err);
-      toast?.showToast('Gagal membaca file produk.');
-      if (productFileRef.current) productFileRef.current.value = '';
-    }
+  // 2. KONEKSI CLOUD SYNC: LAPORAN PRODUK TERJUAL
+  // ==========================================
+  const openProductSyncModal = () => {
+    // Set default tanggal hari ini agar praktis saat dikonfirmasi
+    const hariIni = new Date().toISOString().split('T')[0];
+    setSelectedDate(hariIni);
+    setDateModalOpen(true);
   };
 
-  // Eksekusi kirim data produk setelah Owner menentukan tanggal di Pop-up
-  const submitProductDataWithDate = async () => {
+  const executeProductSync = async () => {
     if (!selectedDate) {
-      toast?.showToast('Silakan pilih tanggal laporan terlebih dahulu!');
+      toast?.showToast('Silakan tentukan tanggal laporan produk terjual!');
       return;
     }
 
     setDateModalOpen(false);
-    setUploadingProduct(true);
+    setSyncingProduct(true);
 
     try {
       const res = await fetch('/api/proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'importProductsExcel',
+          action: 'syncProductsFromDrive',
           idToken: localStorage.getItem('seblak_id_token'),
-          productsData: tempProductData,
-          targetDate: selectedDate // Menyuntikkan tanggal pilihan Owner ke backend
+          targetDate: selectedDate // Mengirim parameter tanggal pilihan owner ke Drive Engine
         })
       });
 
       const result = await res.json();
-      if (result.success) {
-        toast?.showToast(result.data.message || 'Laporan kuantitas produk berhasil disimpan!');
+      if (result.success && result.data.count > 0) {
+        toast?.showToast(result.data.message || 'Sinkronisasi item produk berhasil ter-input massal!');
+      } else if (result.success && result.data.count === 0) {
+        toast?.showToast('Tidak ditemukan file laporan produk baru di dalam folder Google Drive.');
       } else {
-        toast?.showToast('Gagal menyimpan data produk: ' + result.error);
+        toast?.showToast('Gagal memproses data produk: ' + result.error);
       }
     } catch (err) {
       console.error(err);
-      toast?.showToast('Terjadi kesalahan koneksi server.');
+      toast?.showToast('Gagal menghubungi cloud server.');
     } finally {
-      setUploadingProduct(false);
-      setTempProductData(null);
-      if (productFileRef.current) productFileRef.current.value = '';
+      setSyncingProduct(false);
     }
   };
 
@@ -164,46 +116,28 @@ export default function PenjualanPage() {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold">Brankas Data Penjualan</h1>
-          <p className="text-textmuted text-sm">Pusat kelola arsip laporan keuangan dan produk harian</p>
+          <p className="text-textmuted text-sm">Sistem Sinkronisasi otomatis berbasis Google Drive Cloud</p>
         </div>
         
-        {canUpload && (
+        {canSync && (
           <div className="flex flex-wrap gap-3">
-            {/* Tombol 1: Upload Laporan Pendapatan */}
-            <div>
-              <input 
-                type="file" 
-                accept=".xlsx, .xls" 
-                className="hidden" 
-                ref={incomeFileRef} 
-                onChange={handleIncomeUpload} 
-              />
-              <Button 
-                onClick={() => incomeFileRef.current?.click()} 
-                disabled={uploadingIncome || uploadingProduct}
-                variant="primary"
-              >
-                {uploadingIncome ? '⏳ Memproses Pemasukan...' : '📤 Upload Laporan Pendapatan'}
-              </Button>
-            </div>
+            {/* Tombol 1: Sinkronisasi Laporan Pendapatan */}
+            <Button 
+              onClick={handleIncomeSync} 
+              disabled={syncingIncome || syncingProduct}
+              variant="primary"
+            >
+              {syncingIncome ? '🔄 Sedang Membaca Drive Cloud...' : '☁️ Sinkronisasi Laporan Pendapatan'}
+            </Button>
 
-            {/* Tombol 2: Upload Laporan Produk Terjual */}
-            <div>
-              <input 
-                type="file" 
-                accept=".xlsx, .xls" 
-                className="hidden" 
-                ref={productFileRef} 
-                onChange={handleProductFileChange} 
-              />
-              <Button 
-                onClick={() => productFileRef.current?.click()} 
-                disabled={uploadingIncome || uploadingProduct}
-                variant="secondary"
-              >
-                {uploadingProduct ? '⏳ Menyuntikkan Data...' : '📦 Upload Produk Terjual'}
-              </Button>
-            </div>
+            {/* Tombol 2: Sinkronisasi Laporan Produk Terjual */}
+            <Button 
+              onClick={openProductSyncModal} 
+              disabled={syncingIncome || syncingProduct}
+              variant="secondary"
+            >
+              {syncingProduct ? '⏳ Menyuntikkan Data Produk...' : '📦 Sinkronisasi Produk Terjual'}
+            </Button>
           </div>
         )}
       </div>
@@ -215,7 +149,7 @@ export default function PenjualanPage() {
       </div>
 
       <Card title="Tren Grafik Omzet Pendapatan Bersih">
-        {chartData.length ? <SalesLineChart data={chartData} /> : <p className="text-textmuted text-sm text-center py-10">Belum ada data</p>}
+        {chartData.length ? <SalesLineChart data={chartData} /> : <p className="text-textmuted text-sm text-center py-10">Belum ada data berjalan</p>}
       </Card>
 
       <Card title="Arsip Ringkasan Transaksi Toko">
@@ -235,22 +169,22 @@ export default function PenjualanPage() {
         />
       </Card>
 
-      {/* MODAL POP-UP PILIHAN TANGGAL UNTUK PRODUK */}
-      <Modal open={dateModalOpen} onClose={() => setDateModalOpen(false)} title="🗓️ Pilih Tanggal Laporan Produk">
+      {/* MODAL POP-UP PILIHAN TANGGAL CLOUD SYNC PRODUK */}
+      <Modal open={dateModalOpen} onClose={() => setDateModalOpen(false)} title="🗓️ Tentukan Tanggal Laporan Item">
         <div className="space-y-4 py-3">
           <p className="text-sm text-textmuted">
-            Laporan Excel item terjual tidak memiliki kolom tanggal harian. Harap tentukan kapan produk-produk ini terjual agar sisa stok terhitung akurat:
+            Sistem akan membaca file Excel produk terjual langsung dari folder Google Drive Anda. Tentukan tanggal penjualan dari berkas tersebut:
           </p>
           <Input 
             type="date" 
-            label="Tanggal Terjual"
+            label="Tanggal Penjualan"
             required
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
           />
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => setDateModalOpen(false)}>Batal</Button>
-            <Button variant="primary" onClick={submitProductDataWithDate}>💾 Konfirmasi &amp; Upload Data</Button>
+            <Button variant="primary" onClick={executeProductSync}>🚀 Mulai Sinkronisasi Cloud</Button>
           </div>
         </div>
       </Modal>
