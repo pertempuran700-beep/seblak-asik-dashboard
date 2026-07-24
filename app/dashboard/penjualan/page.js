@@ -98,8 +98,8 @@ export default function PenjualanPage() {
       const workbook = XLSX.read(data, { type: 'array' });
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
 
-      // Menyesuaikan baris kosong/header sales report item
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { range: 4 });
+      // FIXED: Mengubah range dari 4 menjadi 0 agar langsung mendeteksi baris judul produk
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { range: 0 });
 
       if (jsonData.length === 0) {
         toast?.showToast('Format laporan produk terjual tidak valid.');
