@@ -4,34 +4,60 @@ import { useData } from '@/hooks/useData';
 import { api } from '@/lib/api';
 import Card from '@/components/ui/Card';
 import { formatRupiah, formatTanggalPendek } from '@/lib/utils';
-import SalesLineChart from '@/components/charts/SalesLineChart'; 
+import SalesLineChart from '@/components/charts/SalesLineChart';
 
 export default function OverviewDashboard() {
-  // State untuk Filter Periode
-  const [period, setPeriod] = useState('30'); 
+  const [period, setPeriod] = useState('30');
   const [showCalendar, setShowCalendar] = useState(false);
   const [customRange, setCustomDates] = useState({ start: '', end: '' });
   const [activeCustomRange, setActiveCustomRange] = useState({ start: null, end: null });
 
-  // Menarik Data dari API
   const { data: settings } = useData(() => api.getSystemSettings(), []);
   const { data: sales } = useData(() => api.getSales({}), []);
   const { data: products } = useData(() => api.listProducts(), []);
-  
-  // Mengambil data metrik bulan ini
+
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
   const { data: metrics } = useData(() => api.getFinancialMetrics(`${currentYear}-${String(currentMonth).padStart(2, '0')}`), []);
 
-  // 1. FILTER TRANSAKSI BERDASARKAN RENTANG TANGGAL (Core Engine)
+  // HELPER: Format tanggal untuk API (YYYY-MM-DD)
+  const getYYYYMMDD = (d) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // 1. SETUP TANGGAL UNTUK API DASHBOARD (Wajib untuk Laporan Produk)
+  const dateRangeStr = useMemo(() => {
+    const now = new Date();
+    const end = getYYYYMMDD(now);
+    const start = new Date();
+    if (period === 'today') { /* start = today */ }
+    else if (period === '7') { start.setDate(now.getDate() - 6); }
+    else if (period === '14') { start.setDate(now.getDate() - 13); }
+    else if (period === '30') { start.setDate(now.getDate() - 29); }
+    else if (period === 'all') { return { start: '2024-01-01', end }; }
+    else if (period === 'custom' && activeCustomRange.start) {
+      return { start: activeCustomRange.start, end: activeCustomRange.end };
+    }
+    return { start: getYYYYMMDD(start), end };
+  }, [period, activeCustomRange]);
+
+  // MENGAMBIL DATA PRODUK DARI API (Karena getSales tidak membawa data items)
+  const { data: dashboardData } = useData(
+    () => api.getDashboardSummary(dateRangeStr.start, dateRangeStr.end),
+    [dateRangeStr.start, dateRangeStr.end]
+  );
+
+  // 2. FILTER TRANSAKSI PENJUALAN
   const filteredSales = useMemo(() => {
     if (!sales) return [];
     const now = new Date();
-    
+
     return sales.filter(s => {
       const saleDate = new Date(s.date);
-      
-      // Rentang Kustom
+
       if (period === 'custom' && activeCustomRange.start && activeCustomRange.end) {
         const start = new Date(activeCustomRange.start);
         start.setHours(0, 0, 0, 0);
@@ -42,81 +68,72 @@ export default function OverviewDashboard() {
 
       const diffTime = Math.abs(now - saleDate);
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
+
       if (period === 'today') return diffDays <= 1;
       if (period === '7') return diffDays <= 7;
       if (period === '14') return diffDays <= 14;
       if (period === '30') return diffDays <= 30;
-      return true; // 'all'
+      return true;
     });
   }, [sales, period, activeCustomRange]);
 
-  // 2. PEMISAHAN REVENUE MURNI VS INFORMASI QRIS KOTAK ATAS
-  
-  // REVENUE MURNI (Hanya transaksi non-QRIS / Kasir Tunai)
+  // 3. PERBAIKAN BUG QRIS & REVENUE MURNI
   const actualRevenue = useMemo(() => {
     return filteredSales
-      .filter(s => !s.is_qris) // Filter HANYA transaksi tunai
-      .reduce((sum, s) => sum + Number(s.yang_diterima || 0), 0);
+      .filter(s => {
+        const method = String(s.payment_method || '').toLowerCase();
+        return !method.includes('qris') && !method.includes('transfer') && !method.includes('bca') && !method.includes('seabank');
+      })
+      .reduce((sum, s) => sum + Number(s.yang_diterima || s.total || 0), 0);
   }, [filteredSales]);
 
-  // INFORMASI QRIS (Berdiri Sendiri, untuk Papan Monitor Atas)
   const qrisMetrics = useMemo(() => {
     const adminFeePct = Number(settings?.admin_fee_percent || 2);
-    const qrisTransactions = filteredSales.filter(s => s.is_qris === true);
+    const qrisTransactions = filteredSales.filter(s => {
+        const method = String(s.payment_method || '').toLowerCase();
+        return method.includes('qris') || method.includes('transfer') || method.includes('bca') || method.includes('seabank');
+    });
 
     const gross = qrisTransactions.reduce((sum, s) => sum + Number(s.total || s.yang_diterima || 0), 0);
-    const mdr = qrisTransactions.reduce((sum, s) => sum + Number(s.mdr || 0), 0) || Math.round((gross * adminFeePct) / 100);
+    const mdr = Math.round((gross * adminFeePct) / 100);
     const net = gross - mdr;
 
     return { gross, mdr, net };
   }, [filteredSales, settings]);
 
-  // 3. LAPORAN PRODUK: BEST SELLER & WORST SELLER SANGAT DINAMIS
+  // 4. PERBAIKAN BUG LAPORAN PRODUK
   const { dynamicTopProducts, dynamicWorstProducts } = useMemo(() => {
-    if (!products) return { dynamicTopProducts: [], dynamicWorstProducts: [] };
+    if (!dashboardData?.product_performance || !products) return { dynamicTopProducts: [], dynamicWorstProducts: [] };
 
-    // a. Buat "Papan Skor" kosong untuk semua produk aktif
-    const productScoreboard = {};
-    products.filter(p => p.status !== 'Discontinued').forEach(p => {
-      productScoreboard[p.name] = 0; // Set semua produk defaultnya 0
-    });
+    const perf = dashboardData.product_performance;
+    const top10 = perf.slice(0, 10);
 
-    // b. Isi "Papan Skor" dengan kuantitas yang terjual pada rentang tanggal aktif
-    filteredSales.forEach(s => {
-      if (s.items && Array.isArray(s.items)) {
-        s.items.forEach(item => {
-          if (productScoreboard[item.name] !== undefined) {
-             productScoreboard[item.name] += Number(item.quantity || item.qty || 0);
-          }
-        });
-      }
-    });
+    const perfMap = {};
+    perf.forEach(p => { perfMap[p.name] = p.qty; });
 
-    // c. Ubah bentuknya jadi Array agar bisa di-sort
-    const sortedProducts = Object.entries(productScoreboard)
-      .map(([name, qty]) => ({ name, qty }))
-      .sort((a, b) => b.qty - a.qty); // Urutkan dari Terbanyak ke Terdikit
+    const allActiveProducts = products
+      .filter(p => p.status !== 'Discontinued')
+      .map(p => ({
+        name: p.name,
+        qty: perfMap[p.name] || 0
+      }))
+      .sort((a, b) => a.qty - b.qty);
 
-    // d. Pisahkan Top 10 dan Bottom 5
-    const top10 = sortedProducts.slice(0, 10);
-    const bottom5 = [...sortedProducts].reverse().slice(0, 5); // Balik urutannya ambil 5 paling buncit
+    const bottom5 = allActiveProducts.slice(0, 5);
 
     return { dynamicTopProducts: top10, dynamicWorstProducts: bottom5 };
-  }, [filteredSales, products]);
+  }, [dashboardData, products]);
 
-  // 4. KALKULASI METRIK LAINNYA & TARGET PROPORSIONAL
-  const actualGPM = metrics?.current?.gross_margin_pct || 0; 
+  // 5. KALKULASI TARGET & METRIK
+  const actualGPM = metrics?.current?.gross_margin_pct || 0;
   const actualEBITDA = metrics?.current?.ebitda || 0;
   const actualNPM = metrics?.current?.revenue > 0 ? (metrics.current.net_profit / metrics.current.revenue) * 100 : 0;
 
-  // Nilai Target dari Settings
   const targetMonthlyRevenue = Number(settings?.target_revenue_monthly || 50000000);
   const targetGPM = Number(settings?.target_gpm_percent || 65);
   const targetMonthlyEBITDA = Number(settings?.target_ebitda_monthly || 15000000);
   const targetNPM = Number(settings?.target_npm_percent || 20);
 
-  // Divider Hari untuk menargetkan progres sesuai rentang tanggal
   const timeDivider = useMemo(() => {
     if (period === 'today') return 1;
     if (period === '7') return 7;
@@ -127,25 +144,23 @@ export default function OverviewDashboard() {
       const e = new Date(activeCustomRange.end);
       return Math.max(1, Math.ceil(Math.abs(e - s) / (1000 * 60 * 60 * 24)) + 1);
     }
-    return 365; // 'all'
+    return 30;
   }, [period, activeCustomRange]);
 
   const targetRevenue = (targetMonthlyRevenue / 30) * timeDivider;
   const targetEBITDA = (targetMonthlyEBITDA / 30) * timeDivider;
 
-  // Persentase Pencapaian Target
   const pctRevenue = Math.min((actualRevenue / targetRevenue) * 100, 100) || 0;
   const pctGPM = Math.min((actualGPM / targetGPM) * 100, 100) || 0;
   const pctEBITDA = Math.min((actualEBITDA / targetMonthlyEBITDA) * 100, 100) || 0;
   const pctNPM = Math.min((actualNPM / targetNPM) * 100, 100) || 0;
 
   const getProgressColor = (pct) => {
-    if (pct >= 85) return 'bg-success'; 
-    if (pct >= 50) return 'bg-warning'; 
-    return 'bg-danger'; 
+    if (pct >= 85) return 'bg-success';
+    if (pct >= 50) return 'bg-warning';
+    return 'bg-danger';
   };
 
-  // 5. DATA GRAFIK REVENUE (Gabungan Total Omzet)
   const chartData = useMemo(() => {
     const grouped = {};
     filteredSales.forEach(s => {
@@ -154,10 +169,9 @@ export default function OverviewDashboard() {
     });
     return Object.keys(grouped).map(date => ({ label: date, revenue: grouped[date] })).reverse();
   }, [filteredSales]);
-    
+
   const criticalStock = (products || []).filter(p => p.current_stock <= p.min_stock);
 
-  // Aksi Klik Kustom Tanggal
   const handleCustomApply = () => {
     if (customRange.start && customRange.end) {
       setActiveCustomRange({ start: customRange.start, end: customRange.end });
@@ -180,17 +194,24 @@ export default function OverviewDashboard() {
     </div>
   );
 
+  // Helper display date aman
+  const displayCustomDate = (dateStr) => {
+     if(!dateStr) return '';
+     try {
+         return formatTanggalPendek(dateStr);
+     } catch(e) {
+         return dateStr;
+     }
+  };
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
-      
-      {/* HEADER & FILTER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">🏠 Ringkasan Eksekutif</h1>
           <p className="text-sm text-textmuted">Pusat kendali performa bisnis Seblak Asik</p>
         </div>
         
-        {/* WADAH FILTER - Diubah strukturnya agar label kustom tidak tumpang tindih */}
         <div className="flex flex-col items-end gap-2 z-50">
           <div className="flex bg-surface2 p-1 rounded-lg gap-1 border border-border/50 relative items-center">
             {[
@@ -211,7 +232,6 @@ export default function OverviewDashboard() {
               </button>
             ))}
 
-            {/* SINGLE ICON KALENDER CUSTOM */}
             <div className="relative border-l border-border/30 ml-1 pl-1">
               <button
                 onClick={() => setShowCalendar(!showCalendar)}
@@ -256,17 +276,15 @@ export default function OverviewDashboard() {
             </div>
           </div>
           
-          {/* INDIKATOR LABEL TANGGAL AKTIF KUSTOM */}
           {period === 'custom' && activeCustomRange.start && (
             <div className="text-xs font-medium text-primary bg-primary/10 px-3 py-1.5 rounded-full border border-primary/20 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
-              Menampilkan data: {formatTanggalPendek(activeCustomRange.start)} - {formatTanggalPendek(activeCustomRange.end)}
+              Menampilkan data: {displayCustomDate(activeCustomRange.start)} - {displayCustomDate(activeCustomRange.end)}
             </div>
           )}
         </div>
       </div>
 
-      {/* MONITOR QRIS (Pisah dari Revenue Kasir) */}
       <div className="bg-surface2 border border-border/50 rounded-card p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-inner">
         <div className="flex items-center gap-3">
           <span className="text-3xl">📱</span>
@@ -281,7 +299,6 @@ export default function OverviewDashboard() {
         </div>
       </div>
 
-      {/* 4 METRIK UTAMA DENGAN PROGRESS BAR */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <ProgressBar 
           label="💰 REVENUE (Kasir Tunai)" 
@@ -309,7 +326,6 @@ export default function OverviewDashboard() {
         />
       </div>
 
-      {/* GRAFIK TOTAL OMZET GABUNGAN */}
       <Card title="📈 Pergerakan Total Penjualan Harian">
         {chartData.length > 0 ? (
           <div className="h-64">
@@ -320,10 +336,8 @@ export default function OverviewDashboard() {
         )}
       </Card>
 
-      {/* LAPORAN PRODUK TERJUAL (100% DINAMIS) */}
       <Card title="📋 Laporan Performa Kuantitas Produk Terjual">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Sisi Kiri: Best Seller */}
           <div className="bg-surface2 p-4 rounded-lg border border-border/50">
             <h3 className="font-bold text-success mb-3 flex items-center gap-2">🔥 Produk Teratas (Best Seller)</h3>
             <ul className="space-y-2">
@@ -337,7 +351,6 @@ export default function OverviewDashboard() {
             </ul>
           </div>
 
-          {/* Sisi Kanan: Worst Seller */}
           <div className="bg-surface2 p-4 rounded-lg border border-border/50">
             <h3 className="font-bold text-info mb-3 flex items-center gap-2">🧊 Produk Tersepi (Worst Seller)</h3>
             <ul className="space-y-2">
@@ -353,7 +366,6 @@ export default function OverviewDashboard() {
         </div>
       </Card>
 
-      {/* PEMANTAU STOK KRITIS */}
       <Card title="⚠️ Pemantau Stok Kritis Bahan Baku" className="border-l-4 border-l-danger">
         <div className="space-y-3">
           {criticalStock.length > 0 ? (
