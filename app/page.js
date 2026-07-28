@@ -1,62 +1,61 @@
 'use client';
-import { useAuth } from '@/hooks/useAuth';
-import { useData } from '@/hooks/useData';
-import { api } from '@/lib/api';
-import Card from '@/components/ui/Card';
-import { formatRupiah } from '@/lib/utils';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
+import { loginWithGoogleToken, getSession } from '@/lib/auth';
+import { useToast } from '@/components/ui/Toast';
 
-export default function DashboardPage() {
-  const { user } = useAuth();
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
-  // Menarik ringkasan data harian asli dari backend
-  const { data: summary } = useData(() => api.getDailySummary(), []);
+export default function LoginPage() {
+  const router = useRouter();
+  const toast = useToast();
+
+  useEffect(() => {
+    if (getSession()) router.push('/dashboard');
+  }, []);
+
+  async function handleSuccess(credentialResponse) {
+    try {
+      const user = await loginWithGoogleToken(credentialResponse.credential);
+      toast?.showToast('Selamat datang, ' + user.full_name);
+      router.push('/dashboard');
+    } catch (err) {
+      toast?.showToast(err.message, 'error');
+    }
+  }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Selamat Datang, {user?.full_name}</h1>
-        <p className="text-sm text-textmuted">Berikut adalah ringkasan operasional Seblak Asik hari ini.</p>
-      </div>
+    <main className="min-h-screen flex items-center justify-center px-4">
+      <div className="w-full max-w-sm text-center">
+        <div className="text-6xl mb-4">🌶️</div>
+        <h1 className="text-2xl font-bold mb-1">Seblak Asik</h1>
+        <p className="text-textmuted text-sm mb-8">Sistem Keuangan &amp; Operasional</p>
 
-      {/* Tiga Kotak Utama Ringkasan Bawaan Asli */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card title="💰 Total Pendapatan">
-          <p className="text-2xl font-bold text-success">
-            {summary ? formatRupiah(summary.total_revenue) : 'Rp 0'}
-          </p>
-          <p className="text-xs text-textmuted mt-1">Gabungan Cash & QRIS hari ini</p>
-        </Card>
-
-        <Card title="🛒 Total Transaksi">
-          <p className="text-2xl font-bold text-white">
-            {summary ? `${summary.transaction_count} Transaksi` : '0 Transaksi'}
-          </p>
-          <p className="text-xs text-textmuted mt-1">Jumlah nota POS yang terbit</p>
-        </Card>
-
-        <Card title="💳 Total QRIS / Transfer">
-          <p className="text-2xl font-bold text-info">
-            {summary ? formatRupiah(summary.total_qris) : 'Rp 0'}
-          </p>
-          <p className="text-xs text-textmuted mt-1">Pendapatan non-tunai hari ini</p>
-        </Card>
-      </div>
-
-      {/* Rincian Metode Pembayaran */}
-      <Card title="💳 Rincian Pembayaran Via">
-        <div className="space-y-2">
-          {summary && summary.by_payment_method ? (
-            Object.keys(summary.by_payment_method).map((method) => (
-              <div key={method} className="flex justify-between items-center border-b border-border/30 pb-2 text-sm">
-                <span className="text-text">{method}</span>
-                <span className="font-semibold text-white">{formatRupiah(summary.by_payment_method[method])}</span>
+        <div className="bg-surface border border-white/[0.08] rounded-card p-6">
+          <p className="text-sm text-textmuted mb-5">Masuk dengan akun Google yang terdaftar sebagai karyawan</p>
+          {GOOGLE_CLIENT_ID ? (
+            <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+              <div className="flex justify-center">
+                <GoogleLogin
+                  onSuccess={handleSuccess}
+                  onError={() => toast?.showToast('Login gagal, coba lagi', 'error')}
+                  theme="filled_black"
+                  shape="pill"
+                />
               </div>
-            ))
+            </GoogleOAuthProvider>
           ) : (
-            <p className="text-sm text-textmuted text-center py-4">Belum ada data transaksi masuk hari ini.</p>
+            <p className="text-danger text-xs">
+              NEXT_PUBLIC_GOOGLE_CLIENT_ID belum diset di environment variables.
+            </p>
           )}
         </div>
-      </Card>
-    </div>
+
+        <p className="text-textmuted text-xs mt-6">
+          Belum punya akses? Hubungi Owner untuk didaftarkan sebagai karyawan.
+        </p>
+      </div>
+    </main>
   );
 }
