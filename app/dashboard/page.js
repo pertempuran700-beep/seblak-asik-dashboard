@@ -77,11 +77,11 @@ export default function OverviewDashboard() {
   const actualEBITDA = metrics?.current?.ebitda || 0;
   const actualNPM = metrics?.current?.revenue > 0 ? (metrics.current.net_profit / metrics.current.revenue) * 100 : 0;
 
-  // TARGET REAL-TIME DARI SPREADSHEET
-  const targetMonthlyRevenue = Number(settings?.target_revenue_monthly) || 50000000;
-  const targetGPM = Number(settings?.target_gpm_percent) || 65;
-  const targetMonthlyEBITDA = Number(settings?.target_ebitda_monthly) || 15000000;
-  const targetNPM = Number(settings?.target_npm_percent) || 20;
+ // TARGET REAL-TIME SINKRONISASI MUTLAK (BYPASS CACHE)
+  const targetMonthlyRevenue = Number(dashboardData?.targets?.revenue) || Number(settings?.target_revenue_monthly) || 50000000;
+  const targetGPM = Number(dashboardData?.targets?.gpm) || Number(settings?.target_gpm_percent) || 65;
+  const targetMonthlyEBITDA = Number(dashboardData?.targets?.ebitda) || Number(settings?.target_ebitda_monthly) || 15000000;
+  const targetNPM = Number(dashboardData?.targets?.npm) || Number(settings?.target_npm_percent) || 20;
 
   const timeDivider = useMemo(() => {
     if (period === 'today') return 1;
