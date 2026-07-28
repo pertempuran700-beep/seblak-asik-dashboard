@@ -2,6 +2,10 @@
  * app/api/proxy/route.js — proxy server-side ke Google Apps Script Web App.
  */
 
+// KUNCI UTAMA: Mematikan total sistem Cache / Memori bawaan Next.js
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function POST(request) {
   const body = await request.json();
   
@@ -11,10 +15,10 @@ export async function POST(request) {
   try {
     const res = await fetch(gasUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
+      headers: { 'Content-Type': 'text/plain' }, 
       body: JSON.stringify(body),
       redirect: 'follow',
-      cache: 'no-store' // <--- KUNCI UTAMA: Memaksa website selalu mengambil data paling baru detik ini juga
+      cache: 'no-store' // Perintah tegas agar selalu menarik data segar dari Spreadsheet
     });
     const data = await res.json();
     return Response.json(data);
