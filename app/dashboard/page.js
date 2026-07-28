@@ -10,7 +10,7 @@ export default function OverviewDashboard() {
   // State untuk Filter Periode: 'today', '7', '14', '30', 'all', 'custom'
   const [period, setPeriod] = useState('30'); 
   
-  // State Tambahan untuk Kalender Custom (Satu Ikon Kontrol)
+  // State Tambahan untuk Kalender Custom
   const [showCalendar, setShowCalendar] = useState(false);
   const [customRange, setCustomDates] = useState({ start: '', end: '' });
   const [activeCustomRange, setActiveCustomRange] = useState({ start: null, end: null });
@@ -26,7 +26,7 @@ export default function OverviewDashboard() {
   const { data: metrics } = useData(() => api.getFinancialMetrics(`${currentYear}-${String(currentMonth).padStart(2, '0')}`), []);
   const { data: monthlySummary } = useData(() => api.getMonthlySummary(currentMonth, currentYear), []);
 
-  // 1. MESIN WAKTU & FILTER DATA (Ditingkatkan untuk Mendukung Kalender Custom)
+  // 1. MESIN WAKTU & FILTER DATA
   const filteredSales = useMemo(() => {
     if (!sales) return [];
     const now = new Date();
@@ -54,43 +54,57 @@ export default function OverviewDashboard() {
     });
   }, [sales, period, activeCustomRange]);
 
-  // 2. SISTEM BARU: KALKULASI TOTAL QRIS BERSIH (Kotor - Admin Fee) BERDASARKAN TANGGAL
+  // 2. SISTEM BARU: KALKULASI TOTAL QRIS BERSIH MENGGUNAKAN FLAG is_qris DARI BACKEND
   const qrisMetrics = useMemo(() => {
-    // Ambil parameter biaya admin fee persen dari Settings Sheets (default 2%)
     const adminFeePct = Number(settings?.admin_fee_percent || 2);
     
-    // Filter transaksi yang menggunakan metode pembayaran QRIS/Digital dalam rentang waktu aktif
-    const qrisTransactions = filteredSales.filter(s => {
-      const method = String(s.payment_method || '').toLowerCase();
-      return method.includes('qris') || method.includes('transfer') || method.includes('bca') || method.includes('seabank');
-    });
+    // PERBAIKAN FATAL: Membaca murni dari flag boolean s.is_qris kiriman Code.gs
+    const qrisTransactions = filteredSales.filter(s => s.is_qris === true);
 
     const gross = qrisTransactions.reduce((sum, s) => sum + Number(s.total || s.yang_diterima || 0), 0);
-    const mdr = Math.round((gross * adminFeePct) / 100);
+    // Menggunakan data MDR asli dari backend jika ada, jika tidak, hitung manual sesuai persen
+    const mdr = qrisTransactions.reduce((sum, s) => sum + Number(s.mdr || 0), 0) || Math.round((gross * adminFeePct) / 100);
     const net = gross - mdr;
 
     return { gross, mdr, net };
   }, [filteredSales, settings]);
 
   // 3. SINKRONISASI PRODUK TERJUAL SESUAI FILTER HARI AKTIF/CUSTOM
-  const dynamicTopProducts = useMemo(() => {
+  const productPerformance = useMemo(() => {
     const grouped = {};
     filteredSales.forEach(s => {
-      // Mengambil rincian item jika dikirim, atau memproses data kuantitas terjual
       if (s.items && Array.isArray(s.items)) {
         s.items.forEach(item => {
-          grouped[item.name] = (grouped[item.name] || 0) + Number(item.qty || 0);
+          // Backend mengirimkan properti 'quantity'
+          grouped[item.name] = (grouped[item.name] || 0) + Number(item.quantity || item.qty || 0);
         });
       }
     });
 
-    const sorted = Object.entries(grouped)
+    return Object.entries(grouped)
       .map(([name, qty]) => ({ name, qty }))
       .sort((a, b) => b.qty - a.qty);
+  }, [filteredSales]);
 
-    // Jika data transaksi kustom kosong, fallback aman ke data bulanan bawaan asli Anda
-    return sorted.length > 0 ? sorted.slice(0, 10) : (monthlySummary?.top_products || []);
-  }, [filteredSales, monthlySummary]);
+  // Best Seller & Worst Seller Dinamis
+  const dynamicTopProducts = useMemo(() => {
+    return productPerformance.length > 0 ? productPerformance.slice(0, 10) : (monthlySummary?.top_products || []);
+  }, [productPerformance, monthlySummary]);
+
+  const dynamicWorstProducts = useMemo(() => {
+    if (!products) return [];
+    // Filter hanya produk yang masih aktif
+    const activeProducts = products.filter(p => p.status !== 'Discontinued');
+    
+    // Mencocokkan master produk dengan data penjualan rentang waktu saat ini
+    const performance = activeProducts.map(p => {
+      const soldItem = productPerformance.find(pp => pp.name === p.name);
+      return { name: p.name, qty: soldItem ? soldItem.qty : 0 };
+    });
+    
+    // Urutkan dari yang paling sedikit terjual (termasuk 0)
+    return performance.sort((a, b) => a.qty - b.qty).slice(0, 5);
+  }, [products, productPerformance]);
 
   // 4. KALKULASI METRIK AKTUAL
   const actualRevenue = filteredSales.reduce((sum, s) => sum + Number(s.yang_diterima || 0), 0);
@@ -142,10 +156,6 @@ export default function OverviewDashboard() {
     });
     return Object.keys(grouped).map(date => ({ label: date, revenue: grouped[date] })).reverse();
   }, [filteredSales]);
-
-  const worstProducts = [...(products || [])]
-    .sort((a, b) => a.stock_out_total - b.stock_out_total)
-    .slice(0, 5); 
     
   const criticalStock = (products || []).filter(p => p.current_stock <= p.min_stock);
 
@@ -175,77 +185,89 @@ export default function OverviewDashboard() {
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
       
       {/* HEADER & FILTER */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">🏠 Ringkasan Eksekutif</h1>
           <p className="text-sm text-textmuted">Pusat kendali performa bisnis Seblak Asik</p>
         </div>
-        <div className="flex bg-surface2 p-1 rounded-lg gap-1 border border-border/50 relative items-center">
-          {[
-            { id: 'all', label: 'Semua' },
-            { id: '30', label: '30 Hari' },
-            { id: '14', label: '14 Hari' },
-            { id: '7', label: '7 Hari' },
-            { id: 'today', label: 'Hari Ini' }
-          ].map(btn => (
-            <button
-              key={btn.id}
-              onClick={() => setPeriod(btn.id)}
-              className={`px-4 py-1.5 text-xs md:text-sm font-semibold rounded-md transition-colors ${
-                period === btn.id ? 'bg-primary text-white shadow-md' : 'text-textmuted hover:bg-surface hover:text-text'
-              }`}
-            >
-              {btn.label}
-            </button>
-          ))}
+        
+        {/* WADAH FILTER - Diubah strukturnya agar label kustom tidak tumpang tindih */}
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex bg-surface2 p-1 rounded-lg gap-1 border border-border/50 relative items-center">
+            {[
+              { id: 'all', label: 'Semua' },
+              { id: '30', label: '30 Hari' },
+              { id: '14', label: '14 Hari' },
+              { id: '7', label: '7 Hari' },
+              { id: 'today', label: 'Hari Ini' }
+            ].map(btn => (
+              <button
+                key={btn.id}
+                onClick={() => setPeriod(btn.id)}
+                className={`px-4 py-1.5 text-xs md:text-sm font-semibold rounded-md transition-colors ${
+                  period === btn.id ? 'bg-primary text-white shadow-md' : 'text-textmuted hover:bg-surface hover:text-text'
+                }`}
+              >
+                {btn.label}
+              </button>
+            ))}
 
-          {/* SINGLE ICON KALENDER CUSTOM */}
-          <div className="relative border-l border-border/30 ml-1 pl-1">
-            <button
-              onClick={() => setShowCalendar(!showCalendar)}
-              className={`px-3 py-1.5 text-xs md:text-sm font-semibold rounded-md transition-colors flex items-center gap-1 ${
-                period === 'custom' ? 'bg-primary text-white shadow-md' : 'text-textmuted hover:bg-surface hover:text-text'
-              }`}
-            >
-              📅 {period === 'custom' ? 'Kustom' : 'Custom'}
-            </button>
+            {/* SINGLE ICON KALENDER CUSTOM */}
+            <div className="relative border-l border-border/30 ml-1 pl-1">
+              <button
+                onClick={() => setShowCalendar(!showCalendar)}
+                className={`px-3 py-1.5 text-xs md:text-sm font-semibold rounded-md transition-colors flex items-center gap-1 ${
+                  period === 'custom' ? 'bg-primary text-white shadow-md' : 'text-textmuted hover:bg-surface hover:text-text'
+                }`}
+              >
+                📅 {period === 'custom' ? 'Kustom' : 'Custom'}
+              </button>
 
-            {showCalendar && (
-              <div className="absolute right-0 top-full mt-2 w-64 bg-surface border border-border rounded-xl shadow-2xl p-4 z-50 text-left">
-                <h4 className="text-sm font-bold text-white mb-2">Rentang Kustom</h4>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs text-textmuted block mb-1">Mulai Tanggal</label>
-                    <input 
-                      type="date" 
-                      value={customRange.start}
-                      onChange={(e) => setCustomDates({ ...customRange, start: e.target.value })}
-                      className="w-full bg-background border border-border/50 rounded p-2 text-xs text-white focus:outline-none focus:border-primary"
-                    />
+              {showCalendar && (
+                <div className="absolute right-0 top-full mt-2 w-64 bg-surface border border-border rounded-xl shadow-2xl p-4 z-50 text-left">
+                  <h4 className="text-sm font-bold text-white mb-2">Rentang Kustom</h4>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-textmuted block mb-1">Mulai Tanggal</label>
+                      <input 
+                        type="date" 
+                        value={customRange.start}
+                        onChange={(e) => setCustomDates({ ...customRange, start: e.target.value })}
+                        className="w-full bg-background border border-border/50 rounded p-2 text-xs text-white focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-textmuted block mb-1">Sampai Tanggal</label>
+                      <input 
+                        type="date" 
+                        value={customRange.end}
+                        onChange={(e) => setCustomDates({ ...customRange, end: e.target.value })}
+                        className="w-full bg-background border border-border/50 rounded p-2 text-xs text-white focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                    <button
+                      onClick={handleCustomApply}
+                      className="w-full bg-primary hover:bg-primary/90 text-white text-xs font-bold py-2 rounded transition-colors"
+                    >
+                      Terapkan Rentang
+                    </button>
                   </div>
-                  <div>
-                    <label className="text-xs text-textmuted block mb-1">Sampai Tanggal</label>
-                    <input 
-                      type="date" 
-                      value={customRange.end}
-                      onChange={(e) => setCustomDates({ ...customRange, end: e.target.value })}
-                      className="w-full bg-background border border-border/50 rounded p-2 text-xs text-white focus:outline-none focus:border-primary"
-                    />
-                  </div>
-                  <button
-                    onClick={handleCustomApply}
-                    className="w-full bg-primary hover:bg-primary/90 text-white text-xs font-bold py-2 rounded transition-colors"
-                  >
-                    Terapkan Rentang
-                  </button>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
+          
+          {/* INDIKATOR LABEL TANGGAL AKTIF (Penyelesaian Masalah #1) */}
+          {period === 'custom' && activeCustomRange.start && (
+            <div className="text-xs font-medium text-primary bg-primary/10 px-3 py-1.5 rounded-full border border-primary/20 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+              Menampilkan data: {formatTanggalPendek(activeCustomRange.start)} - {formatTanggalPendek(activeCustomRange.end)}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* SISTEM BARU: BUBBLE POP-UP METRIK QRIS BERSIH (GAYA KASIR MINIMALIS) */}
+      {/* SISTEM BARU: BUBBLE POP-UP METRIK QRIS BERSIH */}
       <div className="bg-surface2 border border-border/50 rounded-card p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-inner">
         <div className="flex items-center gap-3">
           <span className="text-3xl">📱</span>
@@ -299,10 +321,10 @@ export default function OverviewDashboard() {
         )}
       </Card>
 
-      {/* LAPORAN PRODUK TERJUAL */}
+      {/* LAPORAN PRODUK TERJUAL (SINKRON HARI) */}
       <Card title="📋 Laporan Performa Produk Terjual (Kuantitas)">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Sisi Kiri: Best Seller (Sudah Sinkron Hari) */}
+          {/* Sisi Kiri: Best Seller */}
           <div className="bg-surface2 p-4 rounded-lg border border-border/50">
             <h3 className="font-bold text-success mb-3 flex items-center gap-2">🔥 Produk Teratas (Best Seller)</h3>
             <ul className="space-y-2">
@@ -316,16 +338,17 @@ export default function OverviewDashboard() {
             </ul>
           </div>
 
-          {/* Sisi Kanan: Worst Seller */}
+          {/* Sisi Kanan: Worst Seller (Sekarang Dinamis Mengikuti Filter Tanggal) */}
           <div className="bg-surface2 p-4 rounded-lg border border-border/50">
             <h3 className="font-bold text-info mb-3 flex items-center gap-2">🧊 Produk Terendah (Worst Seller)</h3>
             <ul className="space-y-2">
-              {worstProducts.map((p, i) => (
+              {dynamicWorstProducts.map((p, i) => (
                 <li key={i} className="flex justify-between items-center text-sm border-b border-border/30 pb-1">
                   <span className="text-text">{i + 1}. {p.name}</span>
-                  <span className="font-semibold">{p.stock_out_total} Porsi</span>
+                  <span className="font-semibold text-textmuted">{p.qty} Porsi</span>
                 </li>
               ))}
+              {dynamicWorstProducts.length === 0 && <p className="text-xs text-textmuted">Data belum tersedia.</p>}
             </ul>
           </div>
         </div>
