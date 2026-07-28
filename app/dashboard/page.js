@@ -1,242 +1,257 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 import { useData } from '@/hooks/useData';
 import { api } from '@/lib/api';
-import Card from '@/components/ui/Card';
-import { formatRupiah, formatTanggalPendek } from '@/lib/utils';
-// Pastikan Anda mengimpor komponen Chart yang Anda miliki (contoh menggunakan rechart/komponen kustom)
-import SalesLineChart from '@/components/charts/SalesLineChart'; 
+import Card, { MetricCard } from '@/components/ui/Card';
+import Badge from '@/components/ui/Badge';
+import SalesBarChart from '@/components/charts/SalesBarChart';
+import ProductDonutChart from '@/components/charts/ProductDonutChart';
+import PaymentMethodChart from '@/components/charts/PaymentMethodChart';
+import { formatRupiah, pctChangeLabel, currentMonthYear } from '@/lib/utils';
 
-export default function OverviewDashboard() {
-  // State untuk Filter Periode: 'today', '7', '14', '30', 'all'
-  const [period, setPeriod] = useState('30'); 
+// Helper Format Tanggal
+function getYYYYMMDD(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
-  // Menarik Data dari API
-  const { data: settings } = useData(() => api.getSystemSettings(), []);
-  const { data: sales } = useData(() => api.getSales({}), []);
-  const { data: products } = useData(() => api.listProducts(), []);
-  
-  // Mengambil bulan dan tahun saat ini untuk metrik finansial bulanan (EBITDA & NPM)
-  const currentMonth = new Date().getMonth() + 1;
-  const currentYear = new Date().getFullYear();
-  const { data: metrics } = useData(() => api.getFinancialMetrics(`${currentYear}-${String(currentMonth).padStart(2, '0')}`), []);
-  const { data: monthlySummary } = useData(() => api.getMonthlySummary(currentMonth, currentYear), []);
+function getDateRangeStr(type) {
+  const now = new Date();
+  const end = getYYYYMMDD(now);
+  const start = new Date();
+  if (type === '7') start.setDate(now.getDate() - 6);
+  if (type === '14') start.setDate(now.getDate() - 13);
+  if (type === '30') start.setDate(now.getDate() - 29);
+  return { start: getYYYYMMDD(start), end };
+}
 
-  // 1. MESIN WAKTU & FILTER DATA
-  const filteredSales = useMemo(() => {
-    if (!sales) return [];
-    const now = new Date();
-    return sales.filter(s => {
-      const saleDate = new Date(s.date);
-      const diffTime = Math.abs(now - saleDate);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      if (period === 'today') return diffDays <= 1;
-      if (period === '7') return diffDays <= 7;
-      if (period === '14') return diffDays <= 14;
-      if (period === '30') return diffDays <= 30;
-      return true; // 'all'
-    });
-  }, [sales, period]);
+export default function OverviewPage() {
+  const { user } = useAuth();
+  const { month, year } = currentMonthYear();
 
-  // 2. KALKULASI METRIK AKTUAL
-  const actualRevenue = filteredSales.reduce((sum, s) => sum + Number(s.yang_diterima || 0), 0);
-  const actualGPM = metrics?.current?.gross_margin_pct || 0; 
-  const actualEBITDA = metrics?.current?.ebitda || 0;
-  const actualNPM = metrics?.current?.revenue > 0 ? (metrics.current.net_profit / metrics.current.revenue) * 100 : 0;
+  // STATE UNTUK FILTER KALENDER INTERAKTIF
+  const [filterType, setFilterType] = useState('30'); // 'today', '7', '14', '30', 'custom'
+  const [customDates, setCustomDates] = useState({ start: '', end: '' });
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [activeDateRange, setActiveDateRange] = useState(getDateRangeStr('30'));
 
-  // 3. KALKULASI TARGET PROPORSIONAL (Dari Settings)
-  const targetMonthlyRevenue = Number(settings?.target_revenue_monthly || 50000000);
-  const targetGPM = Number(settings?.target_gpm_percent || 65);
-  const targetMonthlyEBITDA = Number(settings?.target_ebitda_monthly || 15000000);
-  const targetNPM = Number(settings?.target_npm_percent || 20);
+  useEffect(() => {
+    if (filterType !== 'custom') {
+      setActiveDateRange(getDateRangeStr(filterType));
+    }
+  }, [filterType]);
 
-  let timeDivider = 30; // Default bulanan
-  if (period === 'today') timeDivider = 1;
-  if (period === '7') timeDivider = 7;
-  if (period === '14') timeDivider = 14;
-  if (period === 'all') timeDivider = 365;
-
-  const targetRevenue = (targetMonthlyRevenue / 30) * timeDivider;
-  const targetEBITDA = (targetMonthlyEBITDA / 30) * timeDivider;
-
-  // 4. PERSENTASE PENCAPAIAN
-  const pctRevenue = Math.min((actualRevenue / targetRevenue) * 100, 100) || 0;
-  const pctGPM = Math.min((actualGPM / targetGPM) * 100, 100) || 0;
-  const pctEBITDA = Math.min((actualEBITDA / targetMonthlyEBITDA) * 100, 100) || 0; // EBITDA statis ke bulan berjalan
-  const pctNPM = Math.min((actualNPM / targetNPM) * 100, 100) || 0;
-
-  // Fungsi penentu warna progress bar
-  const getProgressColor = (pct) => {
-    if (pct >= 85) return 'bg-success'; // Hijau
-    if (pct >= 50) return 'bg-warning'; // Kuning
-    return 'bg-danger'; // Merah
+  const handleCustomApply = () => {
+    if (customDates.start && customDates.end) {
+      setFilterType('custom');
+      setActiveDateRange({ start: customDates.start, end: customDates.end });
+      setShowCalendar(false);
+    }
   };
 
-  // 5. DATA GRAFIK REVENUE
-  const chartData = useMemo(() => {
-    // Kelompokkan omzet per hari untuk grafik
-    const grouped = {};
-    filteredSales.forEach(s => {
-      const dateStr = formatTanggalPendek(s.date);
-      grouped[dateStr] = (grouped[dateStr] || 0) + Number(s.yang_diterima || 0);
-    });
-    return Object.keys(grouped).map(date => ({ label: date, revenue: grouped[date] })).reverse();
-  }, [filteredSales]);
-
-  // 6. PRODUK & STOK
-  const topProducts = monthlySummary?.top_products || [];
-  const worstProducts = [...(products || [])]
-    .sort((a, b) => a.stock_out_total - b.stock_out_total)
-    .slice(0, 5); // 5 produk terendah
-  
-  const criticalStock = (products || []).filter(p => p.current_stock <= p.min_stock);
-
-  // Komponen Helper untuk Progress Bar
-  const ProgressBar = ({ label, actualText, pct, targetText }) => (
-    <div className="bg-surface2 p-4 rounded-card border border-border/50">
-      <h3 className="text-textmuted text-sm font-semibold mb-1">{label}</h3>
-      <p className="text-2xl font-bold text-text mb-2">{actualText}</p>
-      <div className="w-full bg-background rounded-full h-2.5 mb-1">
-        <div className={`h-2.5 rounded-full ${getProgressColor(pct)}`} style={{ width: `${pct}%` }}></div>
-      </div>
-      <p className="text-xs text-textmuted flex justify-between">
-        <span>{pct.toFixed(1)}% Tercapai</span>
-        <span>Target: {targetText}</span>
-      </p>
-    </div>
+  // 1. DATA DINAMIS (QRIS & PERFORMA PRODUK BERDASARKAN RENTANG TANGGAL)
+  const { data: dashboardData } = useData(
+    () => api.getDashboardSummary(activeDateRange.start, activeDateRange.end),
+    [activeDateRange.start, activeDateRange.end]
   );
 
+  // 2. DATA STATIS BAWAAN SISTEM ASLI (JANGAN DIHAPUS)
+  const { data: daily } = useData(() => api.getDailySummary(), []);
+  const { data: monthly } = useData(() => api.getMonthlySummary(month, year), [month, year]);
+  const { data: stock } = useData(() => api.getStockLevels(), []);
+  
+  const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin';
+  const { data: metrics } = useData(
+    () => (isOwnerOrAdmin ? api.getFinancialMetrics(`${year}-${String(month).padStart(2, '0')}`) : Promise.resolve(null)),
+    [isOwnerOrAdmin, month, year]
+  );
+
+  const lowStock = (stock || []).filter((p) => p.level_status !== 'OK').slice(0, 5);
+  
+  // MENGAMBIL DATA PRODUK TERLARIS DARI API YANG SUDAH TERSINKRONISASI TANGGAL
+  const dynamicTopProducts = dashboardData?.product_performance?.slice(0, 6) || [];
+
+  const paymentData = daily?.by_payment_method
+    ? Object.entries(daily.by_payment_method).map(([name, value]) => ({
+        name,
+        value: daily.total_revenue ? Math.round((value / daily.total_revenue) * 100) : 0,
+      }))
+    : [];
+
   return (
-    <div className="space-y-6 max-w-6xl mx-auto pb-10">
+    <div className="space-y-6 pb-10">
       
-      {/* HEADER & FILTER */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+      {/* 🔹 HEADER & TOOLBAR FILTER KALENDER */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">🏠 Ringkasan Eksekutif</h1>
-          <p className="text-sm text-textmuted">Pusat kendali performa bisnis Seblak Asik</p>
+          <h1 className="text-xl font-bold">Halo, {user?.full_name?.split(' ')[0]} 👋</h1>
+          <p className="text-textmuted text-sm">Ringkasan operasional Seblak Asik</p>
         </div>
-        <div className="flex bg-surface2 p-1 rounded-lg gap-1 border border-border/50">
+
+        <div className="flex items-center bg-surface border border-border/50 p-1 rounded-lg self-start md:self-auto relative">
           {[
-            { id: 'all', label: 'Semua' },
             { id: '30', label: '30 Hari' },
             { id: '14', label: '14 Hari' },
             { id: '7', label: '7 Hari' },
             { id: 'today', label: 'Hari Ini' }
-          ].map(btn => (
+          ].map((btn) => (
             <button
               key={btn.id}
-              onClick={() => setPeriod(btn.id)}
-              className={`px-4 py-1.5 text-xs md:text-sm font-semibold rounded-md transition-colors ${
-                period === btn.id ? 'bg-primary text-white shadow-md' : 'text-textmuted hover:bg-surface hover:text-text'
+              onClick={() => setFilterType(btn.id)}
+              className={`px-3 py-1.5 text-xs md:text-sm rounded-md transition-colors ${
+                filterType === btn.id ? 'bg-primary text-white shadow' : 'text-textmuted hover:text-white'
               }`}
             >
               {btn.label}
             </button>
           ))}
-        </div>
-      </div>
+          
+          {/* IKON KALENDER KUSTOM */}
+          <div className="relative border-l border-border/50 ml-1 pl-1">
+            <button
+              onClick={() => setShowCalendar(!showCalendar)}
+              className={`px-3 py-1.5 text-xs md:text-sm rounded-md flex items-center gap-1 transition-colors ${
+                filterType === 'custom' ? 'bg-primary text-white shadow' : 'text-textmuted hover:text-white'
+              }`}
+            >
+              📅 Custom
+            </button>
 
-      {/* 4 METRIK UTAMA DENGAN PROGRESS BAR */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <ProgressBar 
-          label="💰 REVENUE" 
-          actualText={formatRupiah(actualRevenue)} 
-          pct={pctRevenue} 
-          targetText={formatRupiah(targetRevenue)} 
-        />
-        <ProgressBar 
-          label="📊 GPM (Gross Margin)" 
-          actualText={`${actualGPM.toFixed(1)}%`} 
-          pct={pctGPM} 
-          targetText={`${targetGPM}%`} 
-        />
-        <ProgressBar 
-          label="☕ EBITDA" 
-          actualText={formatRupiah(actualEBITDA)} 
-          pct={pctEBITDA} 
-          targetText={formatRupiah(targetMonthlyEBITDA)} 
-        />
-        <ProgressBar 
-          label="💵 NPM (Net Margin)" 
-          actualText={`${actualNPM.toFixed(1)}%`} 
-          pct={pctNPM} 
-          targetText={`${targetNPM}%`} 
-        />
-      </div>
-
-      {/* GRAFIK REVENUE */}
-      <Card title="📈 Pergerakan Omzet Kotor (Revenue)">
-        {chartData.length > 0 ? (
-          <div className="h-64">
-            <SalesLineChart data={chartData} />
-          </div>
-        ) : (
-          <div className="h-64 flex items-center justify-center text-textmuted">Belum ada data untuk periode ini</div>
-        )}
-      </Card>
-
-      {/* LAPORAN PRODUK TERJUAL */}
-      <Card title="📋 Laporan Performa Produk Terjual (Kuantitas)">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Sisi Kiri: Best Seller */}
-          <div className="bg-surface2 p-4 rounded-lg border border-border/50">
-            <h3 className="font-bold text-success mb-3 flex items-center gap-2">🔥 Produk Teratas (Best Seller)</h3>
-            <ul className="space-y-2">
-              {topProducts.map((p, i) => (
-                <li key={i} className="flex justify-between items-center text-sm border-b border-border/30 pb-1">
-                  <span className="text-text">{i + 1}. {p.name}</span>
-                  <span className="font-semibold">{p.qty} Porsi</span>
-                </li>
-              ))}
-              {topProducts.length === 0 && <p className="text-xs text-textmuted">Data belum tersedia.</p>}
-            </ul>
-          </div>
-
-          {/* Sisi Kanan: Worst Seller */}
-          <div className="bg-surface2 p-4 rounded-lg border border-border/50">
-            <h3 className="font-bold text-info mb-3 flex items-center gap-2">🧊 Produk Terendah (Worst Seller)</h3>
-            <ul className="space-y-2">
-              {worstProducts.map((p, i) => (
-                <li key={i} className="flex justify-between items-center text-sm border-b border-border/30 pb-1">
-                  <span className="text-text">{i + 1}. {p.name}</span>
-                  <span className="font-semibold">{p.stock_out_total} Porsi</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </Card>
-
-      {/* PEMANTAU STOK KRITIS */}
-      <Card title="⚠️ Pemantau Stok Kritis Bahan Baku" className="border-l-4 border-l-danger">
-        <div className="space-y-3">
-          {criticalStock.length > 0 ? (
-            criticalStock.map((p, i) => (
-              <div key={i} className="flex justify-between items-center bg-danger/10 p-3 rounded border border-danger/20">
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">{p.current_stock <= 0 ? '🔴' : '🟡'}</span>
+            {/* POPUP DROPDOWN KALENDER */}
+            {showCalendar && (
+              <div className="absolute right-0 top-full mt-2 w-64 bg-surface2 border border-border/50 rounded-xl shadow-xl p-4 z-50">
+                <p className="text-sm font-semibold mb-3">Pilih Rentang Tanggal</p>
+                <div className="space-y-3">
                   <div>
-                    <p className="font-bold text-sm">{p.name}</p>
-                    <p className="text-xs text-textmuted">Batas Minimum: {p.min_stock} {p.sell_unit}</p>
+                    <label className="text-xs text-textmuted mb-1 block">Tanggal Mulai</label>
+                    <input 
+                      type="date" 
+                      value={customDates.start} 
+                      onChange={(e) => setCustomDates({ ...customDates, start: e.target.value })}
+                      className="w-full bg-background border border-border/50 rounded-md p-2 text-sm text-text focus:outline-none focus:border-primary"
+                    />
                   </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold text-danger text-sm">Sisa: {p.current_stock} {p.sell_unit}</p>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-danger mt-1">
-                    {p.current_stock <= 0 ? 'Critical' : 'Low'}
-                  </p>
+                  <div>
+                    <label className="text-xs text-textmuted mb-1 block">Tanggal Berakhir</label>
+                    <input 
+                      type="date" 
+                      value={customDates.end} 
+                      onChange={(e) => setCustomDates({ ...customDates, end: e.target.value })}
+                      className="w-full bg-background border border-border/50 rounded-md p-2 text-sm text-text focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                  <button 
+                    onClick={handleCustomApply}
+                    className="w-full bg-primary hover:bg-primary/90 text-white text-sm font-semibold py-2 rounded-md mt-2 transition-colors"
+                  >
+                    Terapkan Rentang
+                  </button>
                 </div>
               </div>
-            ))
-          ) : (
-            <div className="p-4 bg-success/10 text-success border border-success/20 rounded-lg text-center font-semibold text-sm">
-              ✅ Semua stok bahan baku berada dalam batas aman.
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </Card>
+      </div>
 
+      {/* 🔹 BUBBLE METRIK KHUSUS: PEMASUKAN QRIS BERSIH */}
+      <div className="bg-surface2 border border-border/50 rounded-card p-5 flex flex-col md:flex-row justify-between items-center gap-4 shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-10 -mt-10 blur-2xl"></div>
+        <div className="flex items-center gap-4 relative z-10">
+          <div className="text-5xl">📱</div>
+          <div>
+            <h3 className="text-sm font-semibold text-textmuted uppercase tracking-wider">Total Pemasukan QRIS Bersih</h3>
+            <div className="flex items-baseline gap-2 mt-1">
+              <p className="text-3xl font-bold text-success">
+                {dashboardData ? formatRupiah(dashboardData.qris.net) : 'Memuat...'}
+              </p>
+              <span className="text-xs font-medium text-textmuted bg-background px-2 py-0.5 rounded-full border border-border/30">
+                {filterType === 'today' ? 'Hari Ini' : filterType === 'custom' ? 'Custom' : `${filterType} Hari`}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col items-end text-sm relative z-10 bg-background/50 p-3 rounded-lg border border-border/30 w-full md:w-auto">
+          <div className="flex justify-between w-full gap-6 border-b border-border/30 pb-1 mb-1">
+            <span className="text-textmuted">Kotor:</span>
+            <span className="font-semibold text-text">{dashboardData ? formatRupiah(dashboardData.qris.gross) : 'Rp 0'}</span>
+          </div>
+          <div className="flex justify-between w-full gap-6">
+            <span className="text-textmuted">Potongan Admin (2%):</span>
+            <span className="font-semibold text-danger">-{dashboardData ? formatRupiah(dashboardData.qris.mdr) : 'Rp 0'}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 🔹 GRID 4 KOTAK METRIK UTAMA (BAWAAN ASLI ANDA) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard label="Revenue Hari Ini" value={formatRupiah(daily?.total_revenue || 0)} change={daily ? `${daily.transaction_count} transaksi` : ''} />
+        {metrics && (
+          <>
+            <MetricCard
+              label="Net Profit Bulan Ini"
+              value={formatRupiah(metrics.current.net_profit)}
+              change={pctChangeLabel(metrics.changes.profit_pct)}
+              changeType={metrics.changes.profit_pct >= 0 ? 'up' : 'down'}
+            />
+            <MetricCard
+              label="COGS Bulan Ini"
+              value={formatRupiah(metrics.current.cogs)}
+              change={pctChangeLabel(metrics.changes.cogs_pct)}
+              changeType={metrics.changes.cogs_pct <= 0 ? 'up' : 'down'}
+            />
+            <MetricCard
+              label="OPEX Bulan Ini"
+              value={formatRupiah(metrics.current.opex)}
+              change={pctChangeLabel(metrics.changes.opex_pct)}
+              changeType={metrics.changes.opex_pct <= 0 ? 'up' : 'down'}
+            />
+          </>
+        )}
+        {!metrics && (
+          <MetricCard label="Revenue Bulan Ini" value={formatRupiah(monthly?.total_revenue || 0)} change={monthly ? `${monthly.transaction_count} transaksi` : ''} />
+        )}
+      </div>
+
+      {/* 🔹 GRAFIK PRODUK DINAMIS & METODE PEMBAYARAN */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        <Card title={`Topping Terlaris (${filterType === 'today' ? 'Hari Ini' : filterType === 'custom' ? 'Custom' : filterType + ' Hari'})`}>
+          {dynamicTopProducts.length ? (
+            <ProductDonutChart data={dynamicTopProducts} />
+          ) : (
+            <p className="text-textmuted text-sm text-center py-10">Belum ada data penjualan di rentang waktu ini</p>
+          )}
+        </Card>
+
+        <Card title="Pembayaran Hari Ini">
+          {paymentData.length ? (
+            <PaymentMethodChart data={paymentData} />
+          ) : (
+            <p className="text-textmuted text-sm text-center py-10">Belum ada transaksi hari ini</p>
+          )}
+        </Card>
+      </div>
+
+      {/* 🔹 TABEL STOK RENDAH */}
+      <Card title="⚠️ Stok Rendah">
+        {lowStock.length === 0 ? (
+          <p className="text-textmuted text-sm">Semua stok dalam kondisi aman ✅</p>
+        ) : (
+          <div className="space-y-2">
+            {lowStock.map((p) => (
+              <div key={p.product_id} className="flex items-center justify-between text-sm border-b border-border/20 pb-2 last:border-0">
+                <span className="font-medium text-text">{p.name}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-textmuted">{p.current_stock} {p.unit} <span className="text-xs opacity-70">(min: {p.min_stock})</span></span>
+                  <Badge variant={p.level_status === 'Critical' ? 'danger' : 'warning'}>{p.level_status}</Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
