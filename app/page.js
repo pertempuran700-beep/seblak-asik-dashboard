@@ -1,5 +1,6 @@
 'use client';
 import { useState, useMemo } from 'react';
+import Link from 'next/link'; // Menggunakan Router internal Next.js agar token auth tidak putus
 import { useData } from '@/hooks/useData';
 import { api } from '@/lib/api';
 import Card from '@/components/ui/Card';
@@ -97,7 +98,7 @@ export default function OverviewDashboard() {
     </div>
   );
 
-  // DAFTAR MENU SIDEBAR NAVIGASI UNTUK SINKRONISASI KE HALAMAN LAIN
+  // LINK SIDEBAR DENGAN SISTEM ROUTING UTUH
   const sidebarLinks = [
     { label: 'Overview', icon: '🏠', active: true, href: '/dashboard' },
     { label: 'Penjualan', icon: '🛒', href: '/dashboard/penjualan' },
@@ -113,7 +114,6 @@ export default function OverviewDashboard() {
   ];
 
   return (
-    // MEMBAGI LAYOUT MENJADI LAYAR KIRI (SIDEBAR) DAN LAYAR KANAN (KONTEN)
     <div className="flex min-h-screen bg-background text-text">
       
       {/* KIRI: SIDEBAR NAVIGASI */}
@@ -124,7 +124,7 @@ export default function OverviewDashboard() {
         </div>
         <nav className="space-y-1">
           {sidebarLinks.map((link, idx) => (
-            <a
+            <Link
               key={idx}
               href={link.href}
               className={`flex items-center gap-3 px-4 py-3 rounded-md font-medium text-sm transition-all ${
@@ -135,7 +135,7 @@ export default function OverviewDashboard() {
             >
               <span className="text-base">{link.icon}</span>
               {link.label}
-            </a>
+            </Link>
           ))}
         </nav>
       </aside>
@@ -179,7 +179,7 @@ export default function OverviewDashboard() {
         </div>
 
         {/* GRAFIK */}
-        <Card title=" Pergerakan Omzet Kotor (Revenue)">
+        <Card title="📈 Pergerakan Omzet Kotor (Revenue)">
           {chartData.length > 0 ? (
             <div className="h-64"><SalesLineChart data={chartData} /></div>
           ) : (
