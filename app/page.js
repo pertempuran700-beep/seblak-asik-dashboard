@@ -8,7 +8,7 @@ import { formatRupiah } from '@/lib/utils';
 export default function DashboardPage() {
   const { user } = useAuth();
 
-  // Menarik ringkasan data harian bawaan sistem asli
+  // Menarik ringkasan data harian asli dari backend
   const { data: summary } = useData(() => api.getDailySummary(), []);
 
   return (
@@ -18,7 +18,7 @@ export default function DashboardPage() {
         <p className="text-sm text-textmuted">Berikut adalah ringkasan operasional Seblak Asik hari ini.</p>
       </div>
 
-      {/* Grid Utama Ringkasan Hari Ini */}
+      {/* Tiga Kotak Utama Ringkasan Bawaan Asli */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card title="💰 Total Pendapatan">
           <p className="text-2xl font-bold text-success">
