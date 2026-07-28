@@ -11,9 +11,10 @@ export async function POST(request) {
   try {
     const res = await fetch(gasUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' }, // Menggunakan text/plain agar tidak terhadang CORS Apps Script
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(body),
       redirect: 'follow',
+      cache: 'no-store' // <--- KUNCI UTAMA: Memaksa website selalu mengambil data paling baru detik ini juga
     });
     const data = await res.json();
     return Response.json(data);
