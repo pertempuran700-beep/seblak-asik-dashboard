@@ -1,29 +1,17 @@
 /**
- * app/api/proxy/route.js — proxy server-side ke Google Apps Script
- * Web App. Ini menghindari isu CORS (Apps Script tidak selalu
- * mengizinkan CORS langsung dari browser) dan menyembunyikan URL
- * Web App dari client bundle.
- *
- * Set GAS_WEB_APP_URL di Vercel > Project Settings > Environment
- * Variables, isi dengan URL hasil "Deploy > New deployment" di
- * Apps Script (diakhiri /exec).
+ * app/api/proxy/route.js — proxy server-side ke Google Apps Script Web App.
  */
 
 export async function POST(request) {
   const body = await request.json();
-  const gasUrl = process.env.GAS_WEB_APP_URL;
-
-  if (!gasUrl) {
-    return Response.json(
-      { success: false, error: 'GAS_WEB_APP_URL belum diset di environment variables' },
-      { status: 500 }
-    );
-  }
+  
+  // URL Deployment Terbaru Apps Script Anda:
+  const gasUrl = "https://script.google.com/macros/s/AKfycbynpgOdbKuDzFswLE6j03TW2Zgk08xwP8NWzDzNm4ju8L5gA79HSFThkEOHHjtyV7U/exec";
 
   try {
     const res = await fetch(gasUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain' }, // Menggunakan text/plain agar tidak terhadang CORS Apps Script
       body: JSON.stringify(body),
       redirect: 'follow',
     });
