@@ -4,18 +4,19 @@ import { useData } from '@/hooks/useData';
 import { api } from '@/lib/api';
 import Card from '@/components/ui/Card';
 import { formatRupiah, formatTanggalPendek } from '@/lib/utils';
-import SalesLineChart from '@/components/charts/SalesLineChart'; 
+import SalesLineChart from '@/components/charts/SalesLineChart';
 
 export default function OverviewDashboard() {
-  const [period, setPeriod] = useState('30'); 
+  const [period, setPeriod] = useState('30');
   const [showCalendar, setShowCalendar] = useState(false);
   const [customRange, setCustomDates] = useState({ start: '', end: '' });
   const [activeCustomRange, setActiveCustomRange] = useState({ start: null, end: null });
 
+  // Karena Cache di proxy sudah mati, settings ini dijamin selalu angka terbaru
   const { data: settings } = useData(() => api.getSystemSettings(), []);
   const { data: sales } = useData(() => api.getSales({}), []);
   const { data: products } = useData(() => api.listProducts(), []);
-  
+
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
   const { data: metrics } = useData(() => api.getFinancialMetrics(`${currentYear}-${String(currentMonth).padStart(2, '0')}`), []);
@@ -42,13 +43,13 @@ export default function OverviewDashboard() {
     return { start: getYYYYMMDD(start), end };
   }, [period, activeCustomRange]);
 
-  // FIX PUSAT: Menggunakan api.getDashboardSummary agar perhitungan Produk akurat
+  // Menarik data QRIS & Laporan Produk yang sudah difilter backend sesuai tanggal
   const { data: dashboardData } = useData(
     () => api.getDashboardSummary(dateRangeStr.start, dateRangeStr.end),
     [dateRangeStr.start, dateRangeStr.end]
   );
 
-  // MENGAMBIL DATA PRODUK YANG SUDAH 100% SINKRON DENGAN KALENDER
+  // LOGIKA LAPORAN PRODUK 100% SINKRON
   const dynamicTopProducts = dashboardData?.product_performance?.filter(p => p.qty > 0).slice(0, 10) || [];
   const dynamicWorstProducts = dashboardData?.product_performance ? [...dashboardData.product_performance].reverse().slice(0, 5) : [];
 
@@ -67,17 +68,16 @@ export default function OverviewDashboard() {
   const actualRevenue = useMemo(() => {
     return filteredSales
       .filter(s => !s.is_qris) 
-      .reduce((sum, s) => sum + Number(s.yang_diterima || 0), 0);
+      .reduce((sum, s) => sum + Number(s.yang_diterima || s.total || 0), 0);
   }, [filteredSales]);
 
-  // Mengambil info QRIS bersih dari dashboardData agar murni tidak tercampur kasir tunai
   const qrisMetrics = dashboardData?.qris || { gross: 0, mdr: 0, net: 0 };
 
   const actualGPM = metrics?.current?.gross_margin_pct || 0; 
   const actualEBITDA = metrics?.current?.ebitda || 0;
   const actualNPM = metrics?.current?.revenue > 0 ? (metrics.current.net_profit / metrics.current.revenue) * 100 : 0;
 
-  // FIX TARGET: Langsung membaca angka mutlak dari objek Settings
+  // TARGET REAL-TIME DARI SPREADSHEET
   const targetMonthlyRevenue = Number(settings?.target_revenue_monthly) || 50000000;
   const targetGPM = Number(settings?.target_gpm_percent) || 65;
   const targetMonthlyEBITDA = Number(settings?.target_ebitda_monthly) || 15000000;
@@ -114,7 +114,7 @@ export default function OverviewDashboard() {
     const grouped = {};
     filteredSales.forEach(s => {
       const dateStr = formatTanggalPendek(s.date);
-      grouped[dateStr] = (grouped[dateStr] || 0) + Number(s.yang_diterima || 0);
+      grouped[dateStr] = (grouped[dateStr] || 0) + Number(s.yang_diterima || s.total || 0);
     });
     return Object.keys(grouped).map(date => ({ label: date, revenue: grouped[date] })).reverse();
   }, [filteredSales]);
@@ -150,7 +150,7 @@ export default function OverviewDashboard() {
     } catch(e) {
         return dateStr;
     }
- };
+  };
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
@@ -289,7 +289,7 @@ export default function OverviewDashboard() {
         )}
       </Card>
 
-      {/* LAPORAN PRODUK TERJUAL (100% DINAMIS) */}
+      {/* LAPORAN PRODUK TERJUAL */}
       <Card title="📋 Laporan Performa Kuantitas Produk Terjual">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-surface2 p-4 rounded-lg border border-border/50">
