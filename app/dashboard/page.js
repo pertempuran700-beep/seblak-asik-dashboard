@@ -7,10 +7,8 @@ import { formatRupiah, formatTanggalPendek } from '@/lib/utils';
 import SalesLineChart from '@/components/charts/SalesLineChart'; 
 
 export default function OverviewDashboard() {
-  // State untuk Filter Periode: 'today', '7', '14', '30', 'all', 'custom'
+  // State untuk Filter Periode
   const [period, setPeriod] = useState('30'); 
-  
-  // State Tambahan untuk Kalender Custom
   const [showCalendar, setShowCalendar] = useState(false);
   const [customRange, setCustomDates] = useState({ start: '', end: '' });
   const [activeCustomRange, setActiveCustomRange] = useState({ start: null, end: null });
@@ -20,13 +18,12 @@ export default function OverviewDashboard() {
   const { data: sales } = useData(() => api.getSales({}), []);
   const { data: products } = useData(() => api.listProducts(), []);
   
-  // Mengambil bulan dan tahun saat ini untuk metrik finansial bulanan
+  // Mengambil data metrik bulan ini
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
   const { data: metrics } = useData(() => api.getFinancialMetrics(`${currentYear}-${String(currentMonth).padStart(2, '0')}`), []);
-  const { data: monthlySummary } = useData(() => api.getMonthlySummary(currentMonth, currentYear), []);
 
-  // 1. MESIN WAKTU & FILTER DATA
+  // 1. FILTER TRANSAKSI BERDASARKAN RENTANG TANGGAL (Core Engine)
   const filteredSales = useMemo(() => {
     if (!sales) return [];
     const now = new Date();
@@ -34,7 +31,7 @@ export default function OverviewDashboard() {
     return sales.filter(s => {
       const saleDate = new Date(s.date);
       
-      // Jika mode kalender kustom aktif
+      // Rentang Kustom
       if (period === 'custom' && activeCustomRange.start && activeCustomRange.end) {
         const start = new Date(activeCustomRange.start);
         start.setHours(0, 0, 0, 0);
@@ -54,71 +51,72 @@ export default function OverviewDashboard() {
     });
   }, [sales, period, activeCustomRange]);
 
-  // 2. SISTEM BARU: KALKULASI TOTAL QRIS BERSIH MENGGUNAKAN FLAG is_qris DARI BACKEND
+  // 2. PEMISAHAN REVENUE MURNI VS INFORMASI QRIS KOTAK ATAS
+  
+  // REVENUE MURNI (Hanya transaksi non-QRIS / Kasir Tunai)
+  const actualRevenue = useMemo(() => {
+    return filteredSales
+      .filter(s => !s.is_qris) // Filter HANYA transaksi tunai
+      .reduce((sum, s) => sum + Number(s.yang_diterima || 0), 0);
+  }, [filteredSales]);
+
+  // INFORMASI QRIS (Berdiri Sendiri, untuk Papan Monitor Atas)
   const qrisMetrics = useMemo(() => {
     const adminFeePct = Number(settings?.admin_fee_percent || 2);
-    
-    // PERBAIKAN FATAL: Membaca murni dari flag boolean s.is_qris kiriman Code.gs
     const qrisTransactions = filteredSales.filter(s => s.is_qris === true);
 
     const gross = qrisTransactions.reduce((sum, s) => sum + Number(s.total || s.yang_diterima || 0), 0);
-    // Menggunakan data MDR asli dari backend jika ada, jika tidak, hitung manual sesuai persen
     const mdr = qrisTransactions.reduce((sum, s) => sum + Number(s.mdr || 0), 0) || Math.round((gross * adminFeePct) / 100);
     const net = gross - mdr;
 
     return { gross, mdr, net };
   }, [filteredSales, settings]);
 
-  // 3. SINKRONISASI PRODUK TERJUAL SESUAI FILTER HARI AKTIF/CUSTOM
-  const productPerformance = useMemo(() => {
-    const grouped = {};
+  // 3. LAPORAN PRODUK: BEST SELLER & WORST SELLER SANGAT DINAMIS
+  const { dynamicTopProducts, dynamicWorstProducts } = useMemo(() => {
+    if (!products) return { dynamicTopProducts: [], dynamicWorstProducts: [] };
+
+    // a. Buat "Papan Skor" kosong untuk semua produk aktif
+    const productScoreboard = {};
+    products.filter(p => p.status !== 'Discontinued').forEach(p => {
+      productScoreboard[p.name] = 0; // Set semua produk defaultnya 0
+    });
+
+    // b. Isi "Papan Skor" dengan kuantitas yang terjual pada rentang tanggal aktif
     filteredSales.forEach(s => {
       if (s.items && Array.isArray(s.items)) {
         s.items.forEach(item => {
-          // Backend mengirimkan properti 'quantity'
-          grouped[item.name] = (grouped[item.name] || 0) + Number(item.quantity || item.qty || 0);
+          if (productScoreboard[item.name] !== undefined) {
+             productScoreboard[item.name] += Number(item.quantity || item.qty || 0);
+          }
         });
       }
     });
 
-    return Object.entries(grouped)
+    // c. Ubah bentuknya jadi Array agar bisa di-sort
+    const sortedProducts = Object.entries(productScoreboard)
       .map(([name, qty]) => ({ name, qty }))
-      .sort((a, b) => b.qty - a.qty);
-  }, [filteredSales]);
+      .sort((a, b) => b.qty - a.qty); // Urutkan dari Terbanyak ke Terdikit
 
-  // Best Seller & Worst Seller Dinamis
-  const dynamicTopProducts = useMemo(() => {
-    return productPerformance.length > 0 ? productPerformance.slice(0, 10) : (monthlySummary?.top_products || []);
-  }, [productPerformance, monthlySummary]);
+    // d. Pisahkan Top 10 dan Bottom 5
+    const top10 = sortedProducts.slice(0, 10);
+    const bottom5 = [...sortedProducts].reverse().slice(0, 5); // Balik urutannya ambil 5 paling buncit
 
-  const dynamicWorstProducts = useMemo(() => {
-    if (!products) return [];
-    // Filter hanya produk yang masih aktif
-    const activeProducts = products.filter(p => p.status !== 'Discontinued');
-    
-    // Mencocokkan master produk dengan data penjualan rentang waktu saat ini
-    const performance = activeProducts.map(p => {
-      const soldItem = productPerformance.find(pp => pp.name === p.name);
-      return { name: p.name, qty: soldItem ? soldItem.qty : 0 };
-    });
-    
-    // Urutkan dari yang paling sedikit terjual (termasuk 0)
-    return performance.sort((a, b) => a.qty - b.qty).slice(0, 5);
-  }, [products, productPerformance]);
+    return { dynamicTopProducts: top10, dynamicWorstProducts: bottom5 };
+  }, [filteredSales, products]);
 
-  // 4. KALKULASI METRIK AKTUAL
-  const actualRevenue = filteredSales.reduce((sum, s) => sum + Number(s.yang_diterima || 0), 0);
+  // 4. KALKULASI METRIK LAINNYA & TARGET PROPORSIONAL
   const actualGPM = metrics?.current?.gross_margin_pct || 0; 
   const actualEBITDA = metrics?.current?.ebitda || 0;
   const actualNPM = metrics?.current?.revenue > 0 ? (metrics.current.net_profit / metrics.current.revenue) * 100 : 0;
 
-  // 5. KALKULASI TARGET PROPORSIONAL (Dari Settings)
+  // Nilai Target dari Settings
   const targetMonthlyRevenue = Number(settings?.target_revenue_monthly || 50000000);
   const targetGPM = Number(settings?.target_gpm_percent || 65);
   const targetMonthlyEBITDA = Number(settings?.target_ebitda_monthly || 15000000);
   const targetNPM = Number(settings?.target_npm_percent || 20);
 
-  // Menentukan pembagi hari otomatis (Mendukung rentang dinamis kalender kustom)
+  // Divider Hari untuk menargetkan progres sesuai rentang tanggal
   const timeDivider = useMemo(() => {
     if (period === 'today') return 1;
     if (period === '7') return 7;
@@ -135,7 +133,7 @@ export default function OverviewDashboard() {
   const targetRevenue = (targetMonthlyRevenue / 30) * timeDivider;
   const targetEBITDA = (targetMonthlyEBITDA / 30) * timeDivider;
 
-  // 6. PERSENTASE PENCAPAIAN
+  // Persentase Pencapaian Target
   const pctRevenue = Math.min((actualRevenue / targetRevenue) * 100, 100) || 0;
   const pctGPM = Math.min((actualGPM / targetGPM) * 100, 100) || 0;
   const pctEBITDA = Math.min((actualEBITDA / targetMonthlyEBITDA) * 100, 100) || 0;
@@ -147,7 +145,7 @@ export default function OverviewDashboard() {
     return 'bg-danger'; 
   };
 
-  // 7. DATA GRAFIK REVENUE
+  // 5. DATA GRAFIK REVENUE (Gabungan Total Omzet)
   const chartData = useMemo(() => {
     const grouped = {};
     filteredSales.forEach(s => {
@@ -159,6 +157,7 @@ export default function OverviewDashboard() {
     
   const criticalStock = (products || []).filter(p => p.current_stock <= p.min_stock);
 
+  // Aksi Klik Kustom Tanggal
   const handleCustomApply = () => {
     if (customRange.start && customRange.end) {
       setActiveCustomRange({ start: customRange.start, end: customRange.end });
@@ -192,7 +191,7 @@ export default function OverviewDashboard() {
         </div>
         
         {/* WADAH FILTER - Diubah strukturnya agar label kustom tidak tumpang tindih */}
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-col items-end gap-2 z-50">
           <div className="flex bg-surface2 p-1 rounded-lg gap-1 border border-border/50 relative items-center">
             {[
               { id: 'all', label: 'Semua' },
@@ -257,7 +256,7 @@ export default function OverviewDashboard() {
             </div>
           </div>
           
-          {/* INDIKATOR LABEL TANGGAL AKTIF (Penyelesaian Masalah #1) */}
+          {/* INDIKATOR LABEL TANGGAL AKTIF KUSTOM */}
           {period === 'custom' && activeCustomRange.start && (
             <div className="text-xs font-medium text-primary bg-primary/10 px-3 py-1.5 rounded-full border border-primary/20 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
@@ -267,7 +266,7 @@ export default function OverviewDashboard() {
         </div>
       </div>
 
-      {/* SISTEM BARU: BUBBLE POP-UP METRIK QRIS BERSIH */}
+      {/* MONITOR QRIS (Pisah dari Revenue Kasir) */}
       <div className="bg-surface2 border border-border/50 rounded-card p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-inner">
         <div className="flex items-center gap-3">
           <span className="text-3xl">📱</span>
@@ -285,7 +284,7 @@ export default function OverviewDashboard() {
       {/* 4 METRIK UTAMA DENGAN PROGRESS BAR */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <ProgressBar 
-          label="💰 REVENUE" 
+          label="💰 REVENUE (Kasir Tunai)" 
           actualText={formatRupiah(actualRevenue)} 
           pct={pctRevenue} 
           targetText={formatRupiah(targetRevenue)} 
@@ -310,8 +309,8 @@ export default function OverviewDashboard() {
         />
       </div>
 
-      {/* GRAFIK REVENUE */}
-      <Card title="📈 Pergerakan Omzet Kotor (Revenue)">
+      {/* GRAFIK TOTAL OMZET GABUNGAN */}
+      <Card title="📈 Pergerakan Total Penjualan Harian">
         {chartData.length > 0 ? (
           <div className="h-64">
             <SalesLineChart data={chartData} />
@@ -321,8 +320,8 @@ export default function OverviewDashboard() {
         )}
       </Card>
 
-      {/* LAPORAN PRODUK TERJUAL (SINKRON HARI) */}
-      <Card title="📋 Laporan Performa Produk Terjual (Kuantitas)">
+      {/* LAPORAN PRODUK TERJUAL (100% DINAMIS) */}
+      <Card title="📋 Laporan Performa Kuantitas Produk Terjual">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Sisi Kiri: Best Seller */}
           <div className="bg-surface2 p-4 rounded-lg border border-border/50">
@@ -334,18 +333,18 @@ export default function OverviewDashboard() {
                   <span className="font-semibold">{p.qty} Porsi</span>
                 </li>
               ))}
-              {dynamicTopProducts.length === 0 && <p className="text-xs text-textmuted">Data belum tersedia.</p>}
+              {dynamicTopProducts.length === 0 && <p className="text-xs text-textmuted">Tidak ada penjualan.</p>}
             </ul>
           </div>
 
-          {/* Sisi Kanan: Worst Seller (Sekarang Dinamis Mengikuti Filter Tanggal) */}
+          {/* Sisi Kanan: Worst Seller */}
           <div className="bg-surface2 p-4 rounded-lg border border-border/50">
-            <h3 className="font-bold text-info mb-3 flex items-center gap-2">🧊 Produk Terendah (Worst Seller)</h3>
+            <h3 className="font-bold text-info mb-3 flex items-center gap-2">🧊 Produk Tersepi (Worst Seller)</h3>
             <ul className="space-y-2">
               {dynamicWorstProducts.map((p, i) => (
                 <li key={i} className="flex justify-between items-center text-sm border-b border-border/30 pb-1">
-                  <span className="text-text">{i + 1}. {p.name}</span>
-                  <span className="font-semibold text-textmuted">{p.qty} Porsi</span>
+                  <span className="text-text truncate w-48">{p.name}</span>
+                  <span className={`font-semibold ${p.qty === 0 ? 'text-danger' : 'text-warning'}`}>{p.qty} Porsi</span>
                 </li>
               ))}
               {dynamicWorstProducts.length === 0 && <p className="text-xs text-textmuted">Data belum tersedia.</p>}
