@@ -77,11 +77,12 @@ export default function OverviewDashboard() {
   const actualEBITDA = metrics?.current?.ebitda || 0;
   const actualNPM = metrics?.current?.revenue > 0 ? (metrics.current.net_profit / metrics.current.revenue) * 100 : 0;
 
- // TARGET REAL-TIME SINKRONISASI MUTLAK (BYPASS CACHE)
+  // TARGET REAL-TIME SINKRONISASI MUTLAK (BYPASS CACHE)
   const targetMonthlyRevenue = Number(dashboardData?.targets?.revenue) || Number(settings?.target_revenue_monthly) || 50000000;
   const targetGPM = Number(dashboardData?.targets?.gpm) || Number(settings?.target_gpm_percent) || 65;
   const targetMonthlyEBITDA = Number(dashboardData?.targets?.ebitda) || Number(settings?.target_ebitda_monthly) || 15000000;
   const targetNPM = Number(dashboardData?.targets?.npm) || Number(settings?.target_npm_percent) || 20;
+  const adminFeePct = Number(dashboardData?.targets?.admin_fee) || Number(settings?.admin_fee_percent) || 2;
 
   const timeDivider = useMemo(() => {
     if (period === 'today') return 1;
@@ -246,7 +247,7 @@ export default function OverviewDashboard() {
         </div>
         <div className="text-xs text-textmuted bg-background/40 border border-border/30 rounded p-2 w-full sm:w-auto flex justify-between sm:gap-6">
           <span>Kotor: <strong>{formatRupiah(qrisMetrics.gross)}</strong></span>
-          <span className="border-l border-border/30 pl-4">Potongan Admin ({settings?.admin_fee_percent || 2}%): <strong className="text-danger">-{formatRupiah(qrisMetrics.mdr)}</strong></span>
+          <span className="border-l border-border/30 pl-4">Potongan Admin ({adminFeePct}%): <strong className="text-danger">-{formatRupiah(qrisMetrics.mdr)}</strong></span>
         </div>
       </div>
 
