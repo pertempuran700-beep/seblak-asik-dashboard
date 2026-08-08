@@ -7,19 +7,12 @@ import { formatRupiah, formatTanggalPendek } from '@/lib/utils';
 import SalesLineChart from '@/components/charts/SalesLineChart';
 
 export default function OverviewDashboard() {
-  const [period, setPeriod] = useState('30');
+  const [period, setPeriod] = useState('7');
   const [showCalendar, setShowCalendar] = useState(false);
   const [customRange, setCustomDates] = useState({ start: '', end: '' });
   const [activeCustomRange, setActiveCustomRange] = useState({ start: null, end: null });
 
-  // Karena Cache di proxy sudah mati, settings ini dijamin selalu angka terbaru
-  const { data: settings } = useData(() => api.getSystemSettings(), []);
-  const { data: sales } = useData(() => api.getSales({}), []);
   const { data: products } = useData(() => api.listProducts(), []);
-
-  const currentMonth = new Date().getMonth() + 1;
-  const currentYear = new Date().getFullYear();
-  const { data: metrics } = useData(() => api.getFinancialMetrics(`${currentYear}-${String(currentMonth).padStart(2, '0')}`), []);
 
   const getYYYYMMDD = (d) => {
     const year = d.getFullYear();
@@ -39,87 +32,46 @@ export default function OverviewDashboard() {
     else if (period === 'custom' && activeCustomRange.start) {
       return { start: activeCustomRange.start, end: activeCustomRange.end };
     }
-    else { start.setFullYear(2024, 0, 1); } // all
     return { start: getYYYYMMDD(start), end };
   }, [period, activeCustomRange]);
 
-  // Menarik data QRIS & Laporan Produk yang sudah difilter backend sesuai tanggal
+  // Tarik data Dashboard & Penjualan sesuai rentang tanggal (Otomatis real-time)
   const { data: dashboardData } = useData(
     () => api.getDashboardSummary(dateRangeStr.start, dateRangeStr.end),
     [dateRangeStr.start, dateRangeStr.end]
   );
+  
+  const { data: rawSales } = useData(() => api.getSales({ 
+    startDate: dateRangeStr.start, 
+    endDate: dateRangeStr.end 
+  }), [dateRangeStr]);
 
-  // LOGIKA LAPORAN PRODUK 100% SINKRON
+  // Kalkulasi Keuangan Otomatis (Real-time GPM, EBITDA, NPM)
+  const fin = dashboardData?.finance_real || { cogs: 0, opex_var: 0, opex_fixed_prorated: 0, tax_dep_prorated: 0, admin_fee: 0 };
+  const revenue = dashboardData?.total_revenue || 0;
+  
+  const grossProfit = revenue - fin.cogs;
+  const gpm = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
+  
+  const ebitda = grossProfit - fin.opex_var - fin.opex_fixed_prorated - fin.admin_fee;
+  const netProfit = ebitda - fin.tax_dep_prorated;
+  const npm = revenue > 0 ? (netProfit / revenue) * 100 : 0;
+
+  // Laporan Produk
   const dynamicTopProducts = dashboardData?.product_performance?.filter(p => p.qty > 0).slice(0, 10) || [];
   const dynamicWorstProducts = dashboardData?.product_performance ? [...dashboardData.product_performance].reverse().slice(0, 5) : [];
 
-  const filteredSales = useMemo(() => {
-    if (!sales) return [];
-    const start = new Date(dateRangeStr.start);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(dateRangeStr.end);
-    end.setHours(23, 59, 59, 999);
-    return sales.filter(s => {
-      const d = new Date(s.date);
-      return d >= start && d <= end;
-    });
-  }, [sales, dateRangeStr]);
-
-  const actualRevenue = useMemo(() => {
-    return filteredSales
-      .filter(s => !s.is_qris) 
-      .reduce((sum, s) => sum + Number(s.yang_diterima || s.total || 0), 0);
-  }, [filteredSales]);
-
-  const qrisMetrics = dashboardData?.qris || { gross: 0, mdr: 0, net: 0 };
-
-  const actualGPM = metrics?.current?.gross_margin_pct || 0; 
-  const actualEBITDA = metrics?.current?.ebitda || 0;
-  const actualNPM = metrics?.current?.revenue > 0 ? (metrics.current.net_profit / metrics.current.revenue) * 100 : 0;
-
-  // TARGET REAL-TIME SINKRONISASI MUTLAK (BYPASS CACHE)
-  const targetMonthlyRevenue = Number(dashboardData?.targets?.revenue) || Number(settings?.target_revenue_monthly) || 50000000;
-  const targetGPM = Number(dashboardData?.targets?.gpm) || Number(settings?.target_gpm_percent) || 65;
-  const targetMonthlyEBITDA = Number(dashboardData?.targets?.ebitda) || Number(settings?.target_ebitda_monthly) || 15000000;
-  const targetNPM = Number(dashboardData?.targets?.npm) || Number(settings?.target_npm_percent) || 20;
-  const adminFeePct = Number(dashboardData?.targets?.admin_fee) || Number(settings?.admin_fee_percent) || 2;
-
-  const timeDivider = useMemo(() => {
-    if (period === 'today') return 1;
-    if (period === '7') return 7;
-    if (period === '14') return 14;
-    if (period === '30') return 30;
-    if (period === 'custom' && activeCustomRange.start && activeCustomRange.end) {
-      const s = new Date(activeCustomRange.start);
-      const e = new Date(activeCustomRange.end);
-      return Math.max(1, Math.ceil(Math.abs(e - s) / (1000 * 60 * 60 * 24)) + 1);
-    }
-    return 30; 
-  }, [period, activeCustomRange]);
-
-  const targetRevenue = (targetMonthlyRevenue / 30) * timeDivider;
-  const targetEBITDA = (targetMonthlyEBITDA / 30) * timeDivider;
-
-  const pctRevenue = Math.min((actualRevenue / targetRevenue) * 100, 100) || 0;
-  const pctGPM = Math.min((actualGPM / targetGPM) * 100, 100) || 0;
-  const pctEBITDA = Math.min((actualEBITDA / targetMonthlyEBITDA) * 100, 100) || 0;
-  const pctNPM = Math.min((actualNPM / targetNPM) * 100, 100) || 0;
-
-  const getProgressColor = (pct) => {
-    if (pct >= 85) return 'bg-success'; 
-    if (pct >= 50) return 'bg-warning'; 
-    return 'bg-danger'; 
-  };
-
+  // Data Grafik
   const chartData = useMemo(() => {
+    if (!rawSales) return [];
     const grouped = {};
-    filteredSales.forEach(s => {
+    rawSales.forEach(s => {
       const dateStr = formatTanggalPendek(s.date);
       grouped[dateStr] = (grouped[dateStr] || 0) + Number(s.yang_diterima || s.total || 0);
     });
     return Object.keys(grouped).map(date => ({ label: date, revenue: grouped[date] })).reverse();
-  }, [filteredSales]);
-    
+  }, [rawSales]);
+
   const criticalStock = (products || []).filter(p => p.current_stock <= p.min_stock);
 
   const handleCustomApply = () => {
@@ -130,43 +82,30 @@ export default function OverviewDashboard() {
     }
   };
 
-  const ProgressBar = ({ label, actualText, pct, targetText }) => (
-    <div className="bg-surface2 p-4 rounded-card border border-border/50">
+  const FinancialCard = ({ label, amount, pct, pctLabel, colorClass }) => (
+    <div className={`bg-surface2 p-4 rounded-card border border-white/[0.08] hover:border-${colorClass.split('-')[1]}/50 transition-all`}>
       <h3 className="text-textmuted text-sm font-semibold mb-1">{label}</h3>
-      <p className="text-2xl font-bold text-text mb-2">{actualText}</p>
-      <div className="w-full bg-background rounded-full h-2.5 mb-1">
-        <div className={`h-2.5 rounded-full ${getProgressColor(pct)}`} style={{ width: `${pct}%` }}></div>
+      <p className={`text-2xl font-bold ${colorClass}`}>{amount}</p>
+      <div className="mt-2 pt-2 border-t border-white/[0.05] flex justify-between items-center">
+        <span className="text-xs text-textmuted">{pctLabel}</span>
+        <span className={`text-xs font-bold px-2 py-1 rounded bg-background ${colorClass}`}>{pct.toFixed(1)}%</span>
       </div>
-      <p className="text-xs text-textmuted flex justify-between">
-        <span>{pct.toFixed(1)}% Tercapai</span>
-        <span>Target: {targetText}</span>
-      </p>
     </div>
   );
-
-  const displayCustomDate = (dateStr) => {
-    if(!dateStr) return '';
-    try {
-        return formatTanggalPendek(dateStr);
-    } catch(e) {
-        return dateStr;
-    }
-  };
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
       
-      {/* HEADER & FILTER */}
+      {/* HEADER & FILTER TANGGAL */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">🏠 Ringkasan Eksekutif</h1>
-          <p className="text-sm text-textmuted">Pusat kendali performa bisnis Seblak Asik</p>
+          <p className="text-sm text-textmuted">Kalkulasi Keuangan Real-time Seblak Asik</p>
         </div>
         
         <div className="flex flex-col items-end gap-2 z-50">
           <div className="flex bg-surface2 p-1 rounded-lg gap-1 border border-border/50 relative items-center">
             {[
-              { id: 'all', label: 'Semua' },
               { id: '30', label: '30 Hari' },
               { id: '14', label: '14 Hari' },
               { id: '7', label: '7 Hari' },
@@ -190,111 +129,64 @@ export default function OverviewDashboard() {
                   period === 'custom' ? 'bg-primary text-white shadow-md' : 'text-textmuted hover:bg-surface hover:text-text'
                 }`}
               >
-                📅 {period === 'custom' ? 'Kustom' : 'Custom'}
+                📅 Kustom
               </button>
-
               {showCalendar && (
                 <div className="absolute right-0 top-full mt-2 w-64 bg-surface border border-border rounded-xl shadow-2xl p-4 z-50 text-left">
                   <h4 className="text-sm font-bold text-white mb-2">Rentang Kustom</h4>
                   <div className="space-y-3">
                     <div>
                       <label className="text-xs text-textmuted block mb-1">Mulai Tanggal</label>
-                      <input 
-                        type="date" 
-                        value={customRange.start}
-                        onChange={(e) => setCustomDates({ ...customRange, start: e.target.value })}
-                        className="w-full bg-background border border-border/50 rounded p-2 text-xs text-white focus:outline-none focus:border-primary"
-                      />
+                      <input type="date" value={customRange.start} onChange={(e) => setCustomDates({ ...customRange, start: e.target.value })} className="w-full bg-background border border-border/50 rounded p-2 text-xs text-white" />
                     </div>
                     <div>
                       <label className="text-xs text-textmuted block mb-1">Sampai Tanggal</label>
-                      <input 
-                        type="date" 
-                        value={customRange.end}
-                        onChange={(e) => setCustomDates({ ...customRange, end: e.target.value })}
-                        className="w-full bg-background border border-border/50 rounded p-2 text-xs text-white focus:outline-none focus:border-primary"
-                      />
+                      <input type="date" value={customRange.end} onChange={(e) => setCustomDates({ ...customRange, end: e.target.value })} className="w-full bg-background border border-border/50 rounded p-2 text-xs text-white" />
                     </div>
-                    <button
-                      onClick={handleCustomApply}
-                      className="w-full bg-primary hover:bg-primary/90 text-white text-xs font-bold py-2 rounded transition-colors"
-                    >
-                      Terapkan Rentang
-                    </button>
+                    <button onClick={handleCustomApply} className="w-full bg-primary hover:bg-primary/90 text-white text-xs font-bold py-2 rounded">Terapkan Rentang</button>
                   </div>
                 </div>
               )}
             </div>
           </div>
-          
-          {period === 'custom' && activeCustomRange.start && (
-            <div className="text-xs font-medium text-primary bg-primary/10 px-3 py-1.5 rounded-full border border-primary/20 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
-              Menampilkan data: {displayCustomDate(activeCustomRange.start)} - {displayCustomDate(activeCustomRange.end)}
-            </div>
-          )}
         </div>
       </div>
 
-      {/* MONITOR QRIS */}
+      {/* METRIK KEUANGAN REAL-TIME */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <FinancialCard label="💰 REVENUE (Omzet Bersih)" amount={formatRupiah(revenue)} pct={100} pctLabel="Total Pemasukan" colorClass="text-white" />
+        <FinancialCard label="📊 GPM (Laba Kotor)" amount={formatRupiah(grossProfit)} pct={gpm} pctLabel="Margin Kotor" colorClass="text-info" />
+        <FinancialCard label="☕ EBITDA (Laba Operasional)" amount={formatRupiah(ebitda)} pct={ebitda/revenue*100 || 0} pctLabel="Margin Operasional" colorClass="text-warning" />
+        <FinancialCard label="💵 NPM (Laba Bersih)" amount={formatRupiah(netProfit)} pct={npm} pctLabel="Margin Bersih" colorClass="text-success" />
+      </div>
+
       <div className="bg-surface2 border border-border/50 rounded-card p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-inner">
         <div className="flex items-center gap-3">
           <span className="text-3xl">📱</span>
           <div>
-            <h4 className="text-xs font-bold text-textmuted uppercase tracking-wider">Total Bersih Pemasukan QRIS</h4>
-            <p className="text-2xl font-black text-success mt-0.5">{formatRupiah(qrisMetrics.net)}</p>
+            <h4 className="text-xs font-bold text-textmuted uppercase tracking-wider">Total Pemasukan QRIS</h4>
+            <p className="text-2xl font-black text-success mt-0.5">{formatRupiah(dashboardData?.qris?.net || 0)}</p>
           </div>
         </div>
         <div className="text-xs text-textmuted bg-background/40 border border-border/30 rounded p-2 w-full sm:w-auto flex justify-between sm:gap-6">
-          <span>Kotor: <strong>{formatRupiah(qrisMetrics.gross)}</strong></span>
-          <span className="border-l border-border/30 pl-4">Potongan Admin ({adminFeePct}%): <strong className="text-danger">-{formatRupiah(qrisMetrics.mdr)}</strong></span>
+          <span>Kotor: <strong>{formatRupiah(dashboardData?.qris?.gross || 0)}</strong></span>
+          <span className="border-l border-border/30 pl-4">Potongan Admin: <strong className="text-danger">-{formatRupiah(dashboardData?.qris?.mdr || 0)}</strong></span>
         </div>
       </div>
 
-      {/* 4 METRIK UTAMA DENGAN PROGRESS BAR */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <ProgressBar 
-          label="💰 REVENUE (Kasir Tunai)" 
-          actualText={formatRupiah(actualRevenue)} 
-          pct={pctRevenue} 
-          targetText={formatRupiah(targetRevenue)} 
-        />
-        <ProgressBar 
-          label="📊 GPM (Gross Margin)" 
-          actualText={`${actualGPM.toFixed(1)}%`} 
-          pct={pctGPM} 
-          targetText={`${targetGPM}%`} 
-        />
-        <ProgressBar 
-          label="☕ EBITDA" 
-          actualText={formatRupiah(actualEBITDA)} 
-          pct={pctEBITDA} 
-          targetText={formatRupiah(targetEBITDA)} 
-        />
-        <ProgressBar 
-          label="💵 NPM (Net Margin)" 
-          actualText={`${actualNPM.toFixed(1)}%`} 
-          pct={pctNPM} 
-          targetText={`${targetNPM}%`} 
-        />
-      </div>
-
-      {/* GRAFIK TOTAL OMZET GABUNGAN */}
-      <Card title="📈 Pergerakan Total Penjualan Harian">
+      {/* GRAFIK & LAPORAN PRODUK */}
+      <Card title="📈 Grafik Tren Omzet">
         {chartData.length > 0 ? (
-          <div className="h-64">
-            <SalesLineChart data={chartData} />
-          </div>
+          <div className="h-64"><SalesLineChart data={chartData} /></div>
         ) : (
-          <div className="h-64 flex items-center justify-center text-textmuted">Belum ada data untuk periode ini</div>
+          <div className="h-64 flex items-center justify-center text-textmuted">Belum ada data di rentang ini</div>
         )}
       </Card>
 
-      {/* LAPORAN PRODUK TERJUAL */}
-      <Card title="📋 Laporan Performa Kuantitas Produk Terjual">
+      <Card title="📋 Laporan Performa Produk">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-surface2 p-4 rounded-lg border border-border/50">
-            <h3 className="font-bold text-success mb-3 flex items-center gap-2">🔥 Produk Teratas (Best Seller)</h3>
+            <h3 className="font-bold text-success mb-3 flex items-center gap-2">🔥 Best Seller (Teratas)</h3>
             <ul className="space-y-2">
               {dynamicTopProducts.map((p, i) => (
                 <li key={i} className="flex justify-between items-center text-sm border-b border-border/30 pb-1">
@@ -305,9 +197,8 @@ export default function OverviewDashboard() {
               {dynamicTopProducts.length === 0 && <p className="text-xs text-textmuted">Tidak ada penjualan.</p>}
             </ul>
           </div>
-
           <div className="bg-surface2 p-4 rounded-lg border border-border/50">
-            <h3 className="font-bold text-info mb-3 flex items-center gap-2">🧊 Produk Tersepi (Worst Seller)</h3>
+            <h3 className="font-bold text-danger mb-3 flex items-center gap-2">🧊 Worst Seller (Tersepi)</h3>
             <ul className="space-y-2">
               {dynamicWorstProducts.map((p, i) => (
                 <li key={i} className="flex justify-between items-center text-sm border-b border-border/30 pb-1">
@@ -321,8 +212,7 @@ export default function OverviewDashboard() {
         </div>
       </Card>
 
-      {/* PEMANTAU STOK KRITIS */}
-      <Card title="⚠️ Pemantau Stok Kritis Bahan Baku" className="border-l-4 border-l-danger">
+      <Card title="⚠️ Warning Produk! (Stok Kritis)" className="border-l-4 border-l-danger">
         <div className="space-y-3">
           {criticalStock.length > 0 ? (
             criticalStock.map((p, i) => (
@@ -336,20 +226,16 @@ export default function OverviewDashboard() {
                 </div>
                 <div className="text-right">
                   <p className="font-bold text-danger text-sm">Sisa: {p.current_stock} {p.sell_unit}</p>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-danger mt-1">
-                    {p.current_stock <= 0 ? 'Critical' : 'Low'}
-                  </p>
                 </div>
               </div>
             ))
           ) : (
             <div className="p-4 bg-success/10 text-success border border-success/20 rounded-lg text-center font-semibold text-sm">
-              ✅ Semua stok bahan baku berada dalam batas aman.
+              ✅ Semua stok bahan baku aman.
             </div>
           )}
         </div>
       </Card>
-
     </div>
   );
 }
