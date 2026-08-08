@@ -83,11 +83,12 @@ export default function OverviewDashboard() {
   const dynamicTopProducts = dashboardData?.product_performance?.slice(0, 10) || [];
   const dynamicWorstProducts = dashboardData?.product_performance ? [...dashboardData.product_performance].reverse().slice(0, 5) : [];
 
-  // Data Grafik
+// Data Grafik (Hanya Kasir Tunai)
   const chartData = useMemo(() => {
     if (!rawSales) return [];
     const grouped = {};
-    rawSales.forEach(s => {
+    // Tambahkan filter !s.is_qris sebelum forEach
+    rawSales.filter(s => !s.is_qris).forEach(s => {
       const dateStr = formatTanggalPendek(s.date);
       grouped[dateStr] = (grouped[dateStr] || 0) + Number(s.yang_diterima || s.total || 0);
     });
