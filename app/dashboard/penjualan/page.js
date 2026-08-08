@@ -99,8 +99,9 @@ export default function PenjualanPage() {
             {showCalendar && (
               <div className="absolute right-0 top-full mt-2 w-64 bg-surface border border-border rounded-xl shadow-2xl p-4 z-50 text-left">
                 <div className="space-y-3">
-                  <input type="date" value={customRange.start} onChange={(e) => setCustomDates({ ...customRange, start: e.target.value })} className="w-full bg-background border rounded p-2 text-xs text-white" />
-                  <input type="date" value={customRange.end} onChange={(e) => setCustomDates({ ...customRange, end: e.target.value })} className="w-full bg-background border rounded p-2 text-xs text-white" />
+                 {/* Ubah bg-background dan text-white menjadi bg-white dan text-black */}
+<input type="date" value={customRange.start} onChange={(e) => setCustomDates({ ...customRange, start: e.target.value })} className="w-full bg-white border border-border/50 rounded p-2 text-xs text-black" />
+<input type="date" value={customRange.end} onChange={(e) => setCustomDates({ ...customRange, end: e.target.value })} className="w-full bg-white border border-border/50 rounded p-2 text-xs text-black" />
                   <button onClick={handleCustomApply} className="w-full bg-primary text-white text-xs font-bold py-2 rounded">Terapkan</button>
                 </div>
               </div>
