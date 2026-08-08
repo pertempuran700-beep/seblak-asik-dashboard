@@ -35,7 +35,6 @@ export default function OverviewDashboard() {
     return { start: getYYYYMMDD(start), end };
   }, [period, activeCustomRange]);
 
-  // Tarik data Dashboard & Penjualan sesuai rentang tanggal (Otomatis real-time)
   const { data: dashboardData } = useData(
     () => api.getDashboardSummary(dateRangeStr.start, dateRangeStr.end),
     [dateRangeStr.start, dateRangeStr.end]
@@ -46,7 +45,21 @@ export default function OverviewDashboard() {
     endDate: dateRangeStr.end 
   }), [dateRangeStr]);
 
-  // Kalkulasi Keuangan Otomatis (Real-time GPM, EBITDA, NPM)
+  // Kalkulator Pembagi Hari untuk Target Pro-rata
+  const timeDivider = useMemo(() => {
+    if (period === 'today') return 1;
+    if (period === '7') return 7;
+    if (period === '14') return 14;
+    if (period === '30') return 30;
+    if (period === 'custom' && activeCustomRange.start && activeCustomRange.end) {
+      const s = new Date(activeCustomRange.start);
+      const e = new Date(activeCustomRange.end);
+      return Math.max(1, Math.ceil(Math.abs(e - s) / (1000 * 60 * 60 * 24)) + 1);
+    }
+    return 30; 
+  }, [period, activeCustomRange]);
+
+  // Kalkulasi Keuangan
   const fin = dashboardData?.finance_real || { cogs: 0, opex_var: 0, opex_fixed_prorated: 0, tax_dep_prorated: 0, admin_fee: 0 };
   const revenue = dashboardData?.total_revenue || 0;
   
@@ -57,8 +70,17 @@ export default function OverviewDashboard() {
   const netProfit = ebitda - fin.tax_dep_prorated;
   const npm = revenue > 0 ? (netProfit / revenue) * 100 : 0;
 
+  // Target Keuangan (Ditarik dari Backend & Diproporsikan sesuai hari)
+  const tRev = dashboardData?.targets?.revenue || 0;
+  const tEbitda = dashboardData?.targets?.ebitda || 0;
+  const targetGPM = dashboardData?.targets?.gpm || 0;
+  const targetNPM = dashboardData?.targets?.npm || 0;
+
+  const targetRevenueProrated = (tRev / 30) * timeDivider;
+  const targetEbitdaProrated = (tEbitda / 30) * timeDivider;
+
   // Laporan Produk
-  const dynamicTopProducts = dashboardData?.product_performance?.filter(p => p.qty > 0).slice(0, 10) || [];
+  const dynamicTopProducts = dashboardData?.product_performance?.slice(0, 10) || [];
   const dynamicWorstProducts = dashboardData?.product_performance ? [...dashboardData.product_performance].reverse().slice(0, 5) : [];
 
   // Data Grafik
@@ -82,10 +104,20 @@ export default function OverviewDashboard() {
     }
   };
 
-  const FinancialCard = ({ label, amount, pct, pctLabel, colorClass }) => (
+  const displayCustomDate = (dateStr) => {
+    if(!dateStr) return '';
+    try { return formatTanggalPendek(dateStr); } 
+    catch(e) { return dateStr; }
+  };
+
+  // Komponen Card dengan Indikator Target
+  const FinancialCard = ({ label, amount, targetAmount, isPercentTarget, pct, pctLabel, colorClass }) => (
     <div className={`bg-surface2 p-4 rounded-card border border-white/[0.08] hover:border-${colorClass.split('-')[1]}/50 transition-all`}>
       <h3 className="text-textmuted text-sm font-semibold mb-1">{label}</h3>
       <p className={`text-2xl font-bold ${colorClass}`}>{amount}</p>
+      <p className="text-xs font-medium text-textmuted mt-1 opacity-80">
+        Target: <span className="text-white">{isPercentTarget ? `${targetAmount}%` : formatRupiah(targetAmount)}</span>
+      </p>
       <div className="mt-2 pt-2 border-t border-white/[0.05] flex justify-between items-center">
         <span className="text-xs text-textmuted">{pctLabel}</span>
         <span className={`text-xs font-bold px-2 py-1 rounded bg-background ${colorClass}`}>{pct.toFixed(1)}%</span>
@@ -137,11 +169,13 @@ export default function OverviewDashboard() {
                   <div className="space-y-3">
                     <div>
                       <label className="text-xs text-textmuted block mb-1">Mulai Tanggal</label>
-                      <input type="date" value={customRange.start} onChange={(e) => setCustomDates({ ...customRange, start: e.target.value })} className="w-full bg-background border border-border/50 rounded p-2 text-xs text-white" />
+                      {/* FIX: Bg putih, text hitam agar terbaca jelas */}
+                      <input type="date" value={customRange.start} onChange={(e) => setCustomDates({ ...customRange, start: e.target.value })} className="w-full bg-white border border-border/50 rounded p-2 text-xs text-black" />
                     </div>
                     <div>
                       <label className="text-xs text-textmuted block mb-1">Sampai Tanggal</label>
-                      <input type="date" value={customRange.end} onChange={(e) => setCustomDates({ ...customRange, end: e.target.value })} className="w-full bg-background border border-border/50 rounded p-2 text-xs text-white" />
+                      {/* FIX: Bg putih, text hitam agar terbaca jelas */}
+                      <input type="date" value={customRange.end} onChange={(e) => setCustomDates({ ...customRange, end: e.target.value })} className="w-full bg-white border border-border/50 rounded p-2 text-xs text-black" />
                     </div>
                     <button onClick={handleCustomApply} className="w-full bg-primary hover:bg-primary/90 text-white text-xs font-bold py-2 rounded">Terapkan Rentang</button>
                   </div>
@@ -149,15 +183,54 @@ export default function OverviewDashboard() {
               )}
             </div>
           </div>
+          
+          {period === 'custom' && activeCustomRange.start && (
+            <div className="text-xs font-medium text-primary bg-primary/10 px-3 py-1.5 rounded-full border border-primary/20 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+              Menampilkan data: {displayCustomDate(activeCustomRange.start)} - {displayCustomDate(activeCustomRange.end)}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* METRIK KEUANGAN REAL-TIME */}
+      {/* METRIK KEUANGAN REAL-TIME DENGAN TARGET */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <FinancialCard label="💰 REVENUE (Omzet Bersih)" amount={formatRupiah(revenue)} pct={100} pctLabel="Total Pemasukan" colorClass="text-white" />
-        <FinancialCard label="📊 GPM (Laba Kotor)" amount={formatRupiah(grossProfit)} pct={gpm} pctLabel="Margin Kotor" colorClass="text-info" />
-        <FinancialCard label="☕ EBITDA (Laba Operasional)" amount={formatRupiah(ebitda)} pct={ebitda/revenue*100 || 0} pctLabel="Margin Operasional" colorClass="text-warning" />
-        <FinancialCard label="💵 NPM (Laba Bersih)" amount={formatRupiah(netProfit)} pct={npm} pctLabel="Margin Bersih" colorClass="text-success" />
+        <FinancialCard 
+           label="💰 REVENUE (Omzet Bersih)" 
+           amount={formatRupiah(revenue)} 
+           targetAmount={targetRevenueProrated}
+           isPercentTarget={false}
+           pct={targetRevenueProrated > 0 ? Math.min((revenue / targetRevenueProrated) * 100, 100) : 0} 
+           pctLabel="Pencapaian Target" 
+           colorClass="text-white" 
+        />
+        <FinancialCard 
+           label="📊 GPM (Laba Kotor)" 
+           amount={formatRupiah(grossProfit)} 
+           targetAmount={targetGPM}
+           isPercentTarget={true}
+           pct={gpm} 
+           pctLabel="Margin Kotor Riil" 
+           colorClass="text-info" 
+        />
+        <FinancialCard 
+           label="☕ EBITDA (Laba Operasional)" 
+           amount={formatRupiah(ebitda)} 
+           targetAmount={targetEbitdaProrated}
+           isPercentTarget={false}
+           pct={targetEbitdaProrated > 0 ? Math.min((ebitda / targetEbitdaProrated) * 100, 100) : 0} 
+           pctLabel="Pencapaian Target" 
+           colorClass="text-warning" 
+        />
+        <FinancialCard 
+           label="💵 NPM (Laba Bersih)" 
+           amount={formatRupiah(netProfit)} 
+           targetAmount={targetNPM}
+           isPercentTarget={true}
+           pct={npm} 
+           pctLabel="Margin Bersih Riil" 
+           colorClass="text-success" 
+        />
       </div>
 
       <div className="bg-surface2 border border-border/50 rounded-card p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-inner">
@@ -174,7 +247,7 @@ export default function OverviewDashboard() {
         </div>
       </div>
 
-      {/* GRAFIK & LAPORAN PRODUK */}
+      {/* GRAFIK */}
       <Card title="📈 Grafik Tren Omzet">
         {chartData.length > 0 ? (
           <div className="h-64"><SalesLineChart data={chartData} /></div>
@@ -183,27 +256,34 @@ export default function OverviewDashboard() {
         )}
       </Card>
 
+      {/* LAPORAN PERFORMA PRODUK (Detail dengan Unit & Rupiah) */}
       <Card title="📋 Laporan Performa Produk">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-surface2 p-4 rounded-lg border border-border/50">
-            <h3 className="font-bold text-success mb-3 flex items-center gap-2">🔥 Best Seller (Teratas)</h3>
-            <ul className="space-y-2">
+            <h3 className="font-bold text-success mb-4 flex items-center gap-2">🔥 Best Seller (Teratas)</h3>
+            <ul className="space-y-3">
               {dynamicTopProducts.map((p, i) => (
-                <li key={i} className="flex justify-between items-center text-sm border-b border-border/30 pb-1">
-                  <span className="text-text">{i + 1}. {p.name}</span>
-                  <span className="font-semibold">{p.qty} Porsi</span>
+                <li key={i} className="flex justify-between items-center text-sm border-b border-border/30 pb-2">
+                  <span className="text-text font-medium truncate pr-2 w-1/2">{i + 1}. {p.name}</span>
+                  <div className="flex justify-end gap-3 w-1/2 text-right">
+                    <span className="font-semibold text-textmuted w-16">{p.qty} Unit</span>
+                    <span className="font-bold text-success w-24">{formatRupiah(p.total)}</span>
+                  </div>
                 </li>
               ))}
               {dynamicTopProducts.length === 0 && <p className="text-xs text-textmuted">Tidak ada penjualan.</p>}
             </ul>
           </div>
           <div className="bg-surface2 p-4 rounded-lg border border-border/50">
-            <h3 className="font-bold text-danger mb-3 flex items-center gap-2">🧊 Worst Seller (Tersepi)</h3>
-            <ul className="space-y-2">
+            <h3 className="font-bold text-danger mb-4 flex items-center gap-2">🧊 Worst Seller (Tersepi)</h3>
+            <ul className="space-y-3">
               {dynamicWorstProducts.map((p, i) => (
-                <li key={i} className="flex justify-between items-center text-sm border-b border-border/30 pb-1">
-                  <span className="text-text truncate w-48">{p.name}</span>
-                  <span className={`font-semibold ${p.qty === 0 ? 'text-danger' : 'text-warning'}`}>{p.qty} Porsi</span>
+                <li key={i} className="flex justify-between items-center text-sm border-b border-border/30 pb-2">
+                  <span className="text-text font-medium truncate pr-2 w-1/2">{p.name}</span>
+                  <div className="flex justify-end gap-3 w-1/2 text-right">
+                    <span className={`font-semibold w-16 ${p.qty === 0 ? 'text-danger' : 'text-warning'}`}>{p.qty} Unit</span>
+                    <span className="font-bold text-textmuted w-24">{formatRupiah(p.total)}</span>
+                  </div>
                 </li>
               ))}
               {dynamicWorstProducts.length === 0 && <p className="text-xs text-textmuted">Data belum tersedia.</p>}
