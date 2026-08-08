@@ -174,3 +174,19 @@ export default function PengaturanPage() {
     </div>
   );
 }
+
+// Di dalam komponen PengaturanPage (app/dashboard/settings/page.js)
+const THEMES = [
+  { name: 'Merah Asik (Default)', color: '#E94560' },
+  { name: 'Hijau Sejahtera', color: '#00B894' },
+  { name: 'Biru Profesional', color: '#0984E3' },
+  { name: 'Emas Kekayaan', color: '#F39C12' }
+];
+
+function changeTheme(color) {
+  document.documentElement.style.setProperty('--primary', color);
+  // Simpan preferensi ke LocalStorage atau API
+  localStorage.setItem('seblak_theme', color);
+}
+
+// (Jangan lupa panggil localStorage.getItem('seblak_theme') di dalam useEffect pada app/layout.js agar tema tersimpan saat web direfresh)
