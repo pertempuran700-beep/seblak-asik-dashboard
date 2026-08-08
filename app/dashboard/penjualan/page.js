@@ -55,10 +55,11 @@ export default function PenjualanPage() {
   // Rata-rata Penjualan = Total Omzet / Volume (Kasir)
   const rataRata = volumeTransaksi > 0 ? (totalOmzet / volumeTransaksi) : 0;
 
-  // DATA GRAFIK
+ // DATA GRAFIK (Hanya Kasir Tunai)
   const chartData = useMemo(() => {
     const grouped = {};
-    (sales || []).forEach(s => {
+    // Tambahkan filter !s.is_qris sebelum forEach
+    (sales || []).filter(s => !s.is_qris).forEach(s => {
       const dateStr = formatTanggalPendek(s.date);
       grouped[dateStr] = (grouped[dateStr] || 0) + Number(s.yang_diterima || s.total || 0);
     });
