@@ -60,3 +60,16 @@ a, button, input, select {
     transition: none !important;
   }
 }
+/* CLASS KHUSUS UNTUK MENU HP YANG BISA DIGESER (SWIPE) */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Memastikan area bawah iPhone (Notch/Safe Area) tidak menabrak menu */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 20px);
+}
