@@ -9,7 +9,6 @@ import Button from '@/components/ui/Button';
 import Tabs from '@/components/ui/Tabs';
 import { Select } from '@/components/ui/Input';
 import { formatRupiah, currentMonthYear, formatTanggalPendek } from '@/lib/utils';
-// Gunakan komponen grafik yang bisa multi-line
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 
 // Komponen Multi-Line Chart Khusus Keuangan
@@ -55,23 +54,16 @@ export default function KeuanganPage() {
   const { month: curMonth, year: curYear } = currentMonthYear();
   const [tabView, setTabView] = useState('bulanan');
   
-  // State Filter
-  const [monthPeriod, setMonthPeriod] = useState(`${curYear}-${curMonth}`);
+  const [monthPeriod, setMonthPeriod] = useState(`${curYear}-${String(curMonth).padStart(2, '0')}`);
   const [yearPeriod, setYearPeriod] = useState(String(curYear));
 
-  // Destructure parameter
   const targetYear = tabView === 'bulanan' ? Number(monthPeriod.split('-')[0]) : Number(yearPeriod);
-  const targetMonth = tabView === 'bulanan' ? Number(monthPeriod.split('-')[1]) : null; // null memicu rekap tahunan di backend
+  const targetMonth = tabView === 'bulanan' ? Number(monthPeriod.split('-')[1]) : null;
 
-  // Tarik Data (Disesuaikan berdasarkan bulan atau null untuk tahun)
   const { data: statement, loading, refetch } = useData(() => api.generateIncomeStatement(targetMonth, targetYear), [targetMonth, targetYear, tabView]);
-  
-  // Tarik Data Pengeluaran & Hutang
   const { data: apar } = useData(() => api.getAPAR(), []);
   const { data: expensesRaw } = useData(() => api.listExpenses({ month: targetMonth, year: targetYear }), [targetMonth, targetYear, tabView]);
 
-  // Siapkan Data Grafik
-  // Jika bulanan, ambil data rawSales untuk membuat chart per tanggal
   const { data: rawSales } = useData(() => {
     if (tabView !== 'bulanan') return Promise.resolve([]);
     const startStr = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
@@ -80,26 +72,50 @@ export default function KeuanganPage() {
     return api.getSales({ startDate: startStr, endDate: endStr });
   }, [targetMonth, targetYear, tabView]);
 
+  // LOGIKA GRAFIK INTERAKTIF
   const chartData = useMemo(() => {
     if (tabView === 'tahunan' && statement?.monthly_breakdown) {
       return statement.monthly_breakdown.map(m => ({
         label: m.month_name, revenue: m.revenue, grossProfit: m.grossProfit, opex: m.opex, netProfit: m.netProfit
       }));
-    } else {
-      // Bulanan (hanya bisa menampilkan revenue karena HPP/OPEX per hari terlalu kompleks direkap di client)
-      // Namun agar rapi, kita tetap gunakan komponen yang sama
+    } else if (tabView === 'bulanan' && rawSales && statement) {
       const grouped = {};
-      (rawSales || []).forEach(s => {
+      rawSales.forEach(s => {
         const dateStr = formatTanggalPendek(s.date);
         grouped[dateStr] = (grouped[dateStr] || 0) + Number(s.yang_diterima || s.total || 0);
       });
-      return Object.keys(grouped).map(date => ({ 
-        label: date, revenue: grouped[date], grossProfit: 0, opex: 0, netProfit: 0 
-      })).reverse();
-    }
-  }, [tabView, statement, rawSales]);
 
-  // Komponen Card
+      // Menghitung Rasio Proporsional dari Buku Besar Bulanan
+      const revTotal = statement.revenue || 1; 
+      const cogsRatio = statement.cogs / revTotal;
+      const opexVarRatio = statement.opex_var / revTotal;
+      
+      // Membagi Biaya Tetap secara Harian
+      const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+      const dailyFixedOpex = statement.opex_fixed / daysInMonth;
+      const dailyTaxDep = statement.depreciation / daysInMonth;
+
+      return Object.keys(grouped).map(date => {
+        const dailyRev = grouped[date];
+        
+        // Kalkulasi Matriks Harian
+        const dailyCogs = dailyRev * cogsRatio;
+        const dailyGross = dailyRev - dailyCogs;
+        const dailyOpex = (dailyRev * opexVarRatio) + dailyFixedOpex;
+        const dailyNet = dailyGross - dailyOpex - dailyTaxDep;
+
+        return { 
+          label: date, 
+          revenue: dailyRev, 
+          grossProfit: dailyGross, 
+          opex: dailyOpex, 
+          netProfit: dailyNet 
+        };
+      }).reverse();
+    }
+    return [];
+  }, [tabView, statement, rawSales, targetMonth, targetYear]);
+
   const MetricCard = ({ label, value, color }) => (
     <div className={`bg-surface2 p-4 rounded-card border-l-4 border-${color} shadow-sm`}>
       <p className="text-xs text-textmuted uppercase tracking-wider mb-1">{label}</p>
@@ -117,7 +133,6 @@ export default function KeuanganPage() {
         
         <div className="flex items-center gap-3">
           <Tabs tabs={[{ value: 'bulanan', label: 'Per-Bulan' }, { value: 'tahunan', label: 'Per-Tahun' }]} active={tabView} onChange={setTabView} />
-          
           <div className="w-40">
             {tabView === 'bulanan' ? (
               <Select options={monthOptions()} value={monthPeriod} onChange={(e) => setMonthPeriod(e.target.value)} />
@@ -141,7 +156,6 @@ export default function KeuanganPage() {
 
           <Card title={`📈 Tren Keuangan ${tabView === 'tahunan' ? '12 Bulan Terakhir' : 'Harian'}`}>
             <FinanceTrendChart data={chartData} />
-            {tabView === 'bulanan' && <p className="text-[10px] text-textmuted mt-2 italic">*Untuk tampilan per-hari, grafik hanya menampilkan garis Revenue (Pendapatan Kasir).</p>}
           </Card>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
