@@ -72,7 +72,7 @@ export default function KeuanganPage() {
     return api.getSales({ startDate: startStr, endDate: endStr });
   }, [targetMonth, targetYear, tabView]);
 
-  // LOGIKA GRAFIK INTERAKTIF
+ // LOGIKA GRAFIK INTERAKTIF
   const chartData = useMemo(() => {
     if (tabView === 'tahunan' && statement?.monthly_breakdown) {
       return statement.monthly_breakdown.map(m => ({
@@ -80,7 +80,9 @@ export default function KeuanganPage() {
       }));
     } else if (tabView === 'bulanan' && rawSales && statement) {
       const grouped = {};
-      rawSales.forEach(s => {
+      
+      // Tambahkan filter !s.is_qris di sini
+      rawSales.filter(s => !s.is_qris).forEach(s => {
         const dateStr = formatTanggalPendek(s.date);
         grouped[dateStr] = (grouped[dateStr] || 0) + Number(s.yang_diterima || s.total || 0);
       });
