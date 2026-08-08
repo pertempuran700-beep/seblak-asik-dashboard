@@ -13,132 +13,89 @@ export default function AbsensiPage() {
   const { user } = useAuth();
   const period = monthPeriodString();
 
-  // State untuk filter tanggal
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // Setup default tanggal: Jika Owner/Admin, default filter diatur ke "Hari Ini"
   useEffect(() => {
-    if (user && (user.role === 'owner' || user.role === 'admin')) {
+    if (user && (user.role === 'owner' || user.role === 'admin' || user.role === 'supervisor')) {
       const todayIso = new Date().toISOString().split('T')[0];
       setStartDate(todayIso);
       setEndDate(todayIso);
     }
   }, [user]);
 
-  // Menarik data summary
   const { data: summary, refetch } = useData(
-    () => (user ? api.getAttendanceSummary(user.role === 'owner' || user.role === 'admin' ? null : user.employee_id, period) : Promise.resolve(null)),
+    () => (user ? api.getAttendanceSummary(user.role === 'owner' || user.role === 'admin' || user.role === 'supervisor' ? null : user.employee_id, period) : Promise.resolve(null)),
     [user, period]
   );
 
-  // Mencari data absensi karyawan spesifik untuk HARI INI guna menampilkan Pop-up Banner
   const today = new Date();
   const todayRecord = summary?.records?.find(r => {
-    // Pastikan kita hanya melihat record milik user yang sedang login
     if (r.employee_id !== user?.employee_id) return false;
-    
     const d = new Date(r.date);
-    return d.getDate() === today.getDate() && 
-           d.getMonth() === today.getMonth() && 
-           d.getFullYear() === today.getFullYear();
+    return d.getDate() === today.getDate() && d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
   });
 
-  // Filter logika baru
   const filteredRecords = (summary?.records || []).filter(r => {
     if (!startDate && !endDate) return true;
-    
-    // Konversi tanggal record dengan penyesuaian zona waktu lokal yang aman
     const rDateObj = new Date(r.date);
-    const rYear = rDateObj.getFullYear();
-    const rMonth = String(rDateObj.getMonth() + 1).padStart(2, '0');
-    const rDay = String(rDateObj.getDate()).padStart(2, '0');
-    const rDate = `${rYear}-${rMonth}-${rDay}`;
-
+    const rDate = `${rDateObj.getFullYear()}-${String(rDateObj.getMonth() + 1).padStart(2, '0')}-${String(rDateObj.getDate()).padStart(2, '0')}`;
     if (startDate && rDate < startDate) return false;
     if (endDate && rDate > endDate) return false;
     return true;
   });
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-5xl mx-auto pb-10">
       <div>
-        <h1 className="text-xl font-bold">✅ Absensi Karyawan</h1>
+        <h1 className="text-2xl font-bold">✅ Absensi Karyawan</h1>
+        <p className="text-sm text-textmuted">Sistem presensi terintegrasi GPS & Geofence</p>
       </div>
 
       <Card>
-        <AttendanceForm 
-          employeeId={user?.employee_id} 
-          employeeName={user?.full_name} 
-          todayRecord={todayRecord}
-          onSuccess={refetch} 
-        />
+        <AttendanceForm employeeId={user?.employee_id} employeeName={user?.full_name} todayRecord={todayRecord} onSuccess={refetch} />
       </Card>
 
       <Card title="Riwayat Kehadiran & Izin Tim">
         {summary ? (
           <>
-            <div className="grid grid-cols-4 gap-2 mb-4 text-center">
-              <div>
-                <p className="text-lg font-bold text-success">{summary.hadir}</p>
-                <p className="text-xs text-textmuted">Hadir</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-warning">{summary.telat}</p>
-                <p className="text-xs text-textmuted">Telat</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-textmuted">{summary.izin}</p>
-                <p className="text-xs text-textmuted">Izin</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-danger">{summary.alpha}</p>
-                <p className="text-xs text-textmuted">Alpha / Ditolak</p>
-              </div>
+            <div className="grid grid-cols-4 gap-2 mb-4 text-center bg-surface2 p-4 rounded-card border border-white/[0.05]">
+              <div><p className="text-2xl font-bold text-success">{summary.hadir}</p><p className="text-xs text-textmuted uppercase tracking-wider">Hadir</p></div>
+              <div><p className="text-2xl font-bold text-warning">{summary.telat}</p><p className="text-xs text-textmuted uppercase tracking-wider">Telat</p></div>
+              <div><p className="text-2xl font-bold text-textmuted">{summary.izin}</p><p className="text-xs text-textmuted uppercase tracking-wider">Izin</p></div>
+              <div><p className="text-2xl font-bold text-danger">{summary.alpha}</p><p className="text-xs text-textmuted uppercase tracking-wider">Alpha/Ditolak</p></div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mb-4 bg-surface2 p-3 rounded-card">
-              <Input label="Dari Tanggal" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-              <Input label="Sampai Tanggal" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <div className="grid grid-cols-2 gap-3 mb-4 bg-surface2 p-3 rounded-card border border-white/[0.05]">
+              <Input label="Dari Tanggal" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-white text-black" />
+              <Input label="Sampai Tanggal" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-white text-black" />
             </div>
 
             <Table
               columns={[
                 { key: 'date', label: 'Tanggal', render: (r) => formatTanggalPendek(r.date) },
-                { key: 'employee_name', label: 'Nama Karyawan', render: (r) => r.employee_name || r.employee_id },
-                { 
-                  key: 'clock_in', 
-                  label: 'Jam Masuk', 
-                  render: (r) => {
-                    if (!r.clock_in) return '-';
-                    const d = new Date(r.clock_in);
-                    return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Jakarta' });
-                  } 
-                },
+                { key: 'employee_name', label: 'Karyawan', render: (r) => <span className="font-bold">{r.employee_name || r.employee_id}</span> },
+                { key: 'clock_in', label: 'Jam Masuk', render: (r) => r.clock_in ? new Date(r.clock_in).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-' },
+                { key: 'clock_out', label: 'Jam Keluar', render: (r) => r.clock_out ? new Date(r.clock_out).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-' },
                 {
-                  key: 'status',
-                  label: 'Status',
+                  key: 'status', label: 'Status',
                   render: (r) => {
                     const isRejected = r.approval_status === 'Rejected';
-                    // Pakai late_minutes berformat string HH:MM yang baru
                     const isLate = r.late_minutes && r.late_minutes !== '00:00';
                     const displayStatus = isRejected ? 'Absent' : (isLate ? 'Late' : r.status);
-                    const colorClass = displayStatus === 'Absent' ? 'text-danger font-semibold' : displayStatus === 'Late' ? 'text-warning font-semibold' : 'text-success';
-                    return <span className={colorClass}>{displayStatus}</span>;
+                    const color = displayStatus === 'Absent' ? 'text-danger font-semibold' : displayStatus === 'Late' ? 'text-warning font-semibold' : 'text-success';
+                    return <span className={color}>{displayStatus}</span>;
                   },
                 },
                 {
-                  key: 'approval_status',
-                  label: 'Approval',
+                  key: 'outside_reason', label: 'Catatan Persetujuan',
                   render: (r) => {
-                    const statusText = r.approval_status === 'auto' ? 'Approved' : (r.approval_status || 'Pending');
-                    return <span className="text-textmuted capitalize">{statusText}</span>;
-                  },
-                },
-                {
-                  key: 'outside_reason',
-                  label: 'Alasan / Keterangan',
-                  render: (r) => r.outside_reason || r.notes || '-'
+                     // Merapikan tampilan agar cukup menunjukkan nama penyetuju
+                     if (r.approved_by && r.approved_by !== 'auto') return <span className="text-xs text-info font-medium">Disetujui oleh: {r.approved_by}</span>;
+                     if (r.approval_status === 'auto') return <span className="text-xs text-success">Sistem (Dalam Radius)</span>;
+                     if (r.outside_reason) return <span className="text-xs opacity-70">{r.outside_reason}</span>;
+                     return '-';
+                  }
                 }
               ]}
               rows={filteredRecords}
