@@ -4,17 +4,16 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 
 const NAV_ITEMS = [
-  { href: '/dashboard', icon: '🏠', label: 'Overview', roles: ['owner', 'admin', 'employee'] },
-  { href: '/dashboard/penjualan', icon: '📈', label: 'Penjualan', roles: ['owner', 'admin', 'employee'] },
-  { href: '/dashboard/stok', icon: '📦', label: 'Stok', roles: ['owner', 'admin', 'employee'] },
-  { href: '/dashboard/keuangan', icon: '💰', label: 'Keuangan', roles: ['owner'] },
-  { href: '/dashboard/karyawan', icon: '👥', label: 'Karyawan', roles: ['owner', 'admin'] },
-  { href: '/dashboard/absensi', icon: '✅', label: 'Absensi', roles: ['owner', 'admin', 'employee'] },
-  { href: '/dashboard/vendor', icon: '🏭', label: 'Vendor', roles: ['owner', 'admin'] },
-  { href: '/dashboard/hutang-piutang', icon: '📋', label: 'Hutang/Piutang', roles: ['owner', 'admin'] },
-  { href: '/dashboard/shareholder', icon: '👔', label: 'Shareholder', roles: ['owner'] },
-  { href: '/dashboard/promo', icon: '🏷️', label: 'Promo', roles: ['owner', 'admin'] },
-  { href: '/dashboard/settings', icon: '⚙️', label: 'Pengaturan', roles: ['owner'] },
+  { href: '/dashboard', icon: '🏠', label: 'Overview', roles: ['owner', 'supervisor', 'employee'] },
+  { href: '/dashboard/penjualan', icon: '📈', label: 'Penjualan', roles: ['owner', 'supervisor', 'employee'] },
+  { href: '/dashboard/stok', icon: '📦', label: 'Stok', roles: ['owner', 'supervisor', 'employee'] },
+  { href: '/dashboard/keuangan', icon: '💰', label: 'Keuangan', roles: ['owner'] }, // Hanya owner
+  { href: '/dashboard/karyawan', icon: '👥', label: 'Karyawan', roles: ['owner', 'supervisor', 'employee'] }, // Employee bisa lihat miliknya sendiri
+  { href: '/dashboard/absensi', icon: '✅', label: 'Absensi', roles: ['owner', 'supervisor', 'employee'] },
+  { href: '/dashboard/vendor', icon: '🏭', label: 'Vendor', roles: ['owner', 'supervisor'] },
+  { href: '/dashboard/hutang-piutang', icon: '📋', label: 'Hutang & Piutang', roles: ['owner'] }, // Owner
+  { href: '/dashboard/shareholder', icon: '👔', label: 'Shareholder', roles: ['owner'] }, // Owner
+  { href: '/dashboard/settings', icon: '⚙️', label: 'Pengaturan', roles: ['owner'] }, // Owner
 ];
 
 export default function Sidebar({ role }) {
