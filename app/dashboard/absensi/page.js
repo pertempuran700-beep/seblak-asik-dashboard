@@ -67,8 +67,8 @@ export default function AbsensiPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-3 mb-4 bg-surface2 p-3 rounded-card border border-white/[0.05]">
-              <Input label="Dari Tanggal" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-white text-black" />
-              <Input label="Sampai Tanggal" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-white text-black" />
+              <Input label="Dari Tanggal" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-black text-black" />
+              <Input label="Sampai Tanggal" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-black text-black" />
             </div>
 
             <Table
