@@ -1,32 +1,62 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
-/**
- * useData — fetch data dari fungsi async (biasanya api.xxx), dengan
- * state loading/error, dan `refetch` untuk refresh manual setelah
- * mutasi (mis. setelah createSale).
- */
-export function useData(fetchFn, deps = []) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+// Memori Global Sementara (Cache) agar pindah tab jadi instan 0 detik
+const globalCache = {};
+
+export function useData(fetcherFn, dependencies = [], pollingInterval = 15000) {
+  // Membuat ID unik untuk setiap request berdasarkan parameter yang dikirim
+  const cacheKey = fetcherFn.toString() + JSON.stringify(dependencies);
+  
+  // Jika data sudah ada di cache, langsung tampilkan (tidak usah loading)
+  const [data, setData] = useState(globalCache[cacheKey] || null);
+  const [loading, setLoading] = useState(!globalCache[cacheKey]);
   const [error, setError] = useState(null);
+  
+  const isMounted = useRef(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await fetchFn();
-      setData(result);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+  const fetchData = useCallback(async (isBackground = false) => {
+    // Jangan tampilkan tulisan "Memuat..." jika ini adalah refresh background
+    if (!isBackground && !globalCache[cacheKey]) {
+      setLoading(true);
     }
-  }, deps);
+    
+    try {
+      const result = await fetcherFn();
+      if (isMounted.current) {
+        // Simpan data terbaru ke memori cache global
+        globalCache[cacheKey] = result;
+        setData(result);
+        setError(null);
+      }
+    } catch (err) {
+      if (isMounted.current) setError(err.message);
+    } finally {
+      if (isMounted.current) setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, dependencies);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    isMounted.current = true;
+    
+    // Tarik data pertama kali komponen dimuat
+    fetchData();
 
-  return { data, loading, error, refetch: load };
+    // AUTO-REFRESH (POLLING) SETIAP 15 DETIK
+    // Sistem akan diam-diam mengambil data baru dari Spreadsheet tanpa mengganggu layar
+    let intervalId;
+    if (pollingInterval > 0) {
+      intervalId = setInterval(() => {
+        fetchData(true); // true = isBackground (sembunyikan loading)
+      }, pollingInterval);
+    }
+
+    return () => {
+      isMounted.current = false;
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [fetchData, pollingInterval]);
+
+  return { data, loading, error, refetch: fetchData };
 }
