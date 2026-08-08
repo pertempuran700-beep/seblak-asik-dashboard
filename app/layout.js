@@ -9,6 +9,14 @@ const inter = Inter({
 });
 
 export const metadata = {
+  // Tambahkan konfigurasi viewport ini agar tampilan di HP terkunci rapi (seperti aplikasi asli)
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false, // Mencegah layar nge-zoom otomatis saat mengetik di iPhone/Android
+  themeColor: '#1A1A3E', // Ganti dengan kode warna gelap dominan web Anda
+};
   title: 'Seblak Asik — Sistem Keuangan',
   description: 'Sistem manajemen penjualan, stok, keuangan, dan karyawan Seblak Asik',
 };
