@@ -14,6 +14,13 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }) {
+  // Tambahkan ini di komponen layout/Topbar.js atau layout utama Anda agar jalan di client
+  if (typeof window !== 'undefined') {
+    const savedTheme = localStorage.getItem('seblak_theme');
+    if (savedTheme) {
+      document.documentElement.style.setProperty('--primary', savedTheme);
+    }
+  }
   return (
     <html lang="id" className={inter.className}>
       <body>
