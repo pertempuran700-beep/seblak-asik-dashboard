@@ -16,24 +16,26 @@ import { formatRupiah, currentMonthYear, formatTanggalPendek } from '@/lib/utils
 import { useToast } from '@/components/ui/Toast';
 
 // -----------------------------------------------------
-// KOMPONEN FORM MODAL JADWAL KARYAWAN
+// KOMPONEN FORM MODAL JADWAL KARYAWAN (Mode Tambah & Edit)
 // -----------------------------------------------------
-function ScheduleModal({ date, settings, employees, onClose, onSuccess }) {
+function ScheduleModal({ date, settings, employees, editData, onClose, onSuccess }) {
   const toast = useToast();
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   
-  // Penentuan otomatis Jam Kerja berdasarkan hari (0=Minggu, 1-4=Senin-Kamis, 5-6=Jumat-Sabtu)
   const dayIndex = new Date(date).getDay();
-  const isWeekend = dayIndex === 0 || dayIndex === 5 || dayIndex === 6; // Jumat, Sabtu, Minggu = Weekend
+  const isWeekend = dayIndex === 0 || dayIndex === 5 || dayIndex === 6;
   
   const defaultIn = isWeekend ? (settings?.shift_weekend_in || '10:00') : (settings?.shift_weekday_in || '09:00');
   const defaultOut = isWeekend ? (settings?.shift_weekend_out || '21:30') : (settings?.shift_weekday_out || '20:30');
 
+  // Jika editData ada, gunakan datanya. Jika tidak, gunakan nilai default.
   const [form, setForm] = useState({
-    employeeId: '',
-    startTime: defaultIn,
-    endTime: defaultOut,
-    notes: ''
+    schedule_id: editData?.schedule_id || '',
+    employeeId: editData?.employee_id || '',
+    startTime: editData?.start_time || defaultIn,
+    endTime: editData?.end_time || defaultOut,
+    notes: editData?.notes || ''
   });
 
   async function handleSubmit(e) {
@@ -41,13 +43,14 @@ function ScheduleModal({ date, settings, employees, onClose, onSuccess }) {
     setSubmitting(true);
     try {
       await api.saveDailySchedule({
+        schedule_id: form.schedule_id, // Kirim ID lama (jika ada) untuk diedit
         employeeId: form.employeeId,
         date: date,
         startTime: form.startTime,
         endTime: form.endTime,
         notes: form.notes
       });
-      toast?.showToast('Jadwal berhasil ditambahkan!');
+      toast?.showToast(form.schedule_id ? 'Jadwal berhasil diperbarui!' : 'Jadwal berhasil ditambahkan!');
       onSuccess?.();
       onClose?.();
     } catch (err) {
@@ -57,10 +60,24 @@ function ScheduleModal({ date, settings, employees, onClose, onSuccess }) {
     }
   }
 
+  async function handleDelete() {
+    if (!confirm('Yakin ingin menghapus jadwal karyawan ini?')) return;
+    setDeleting(true);
+    try {
+      await api.deleteDailySchedule(form.schedule_id);
+      toast?.showToast('Jadwal berhasil dihapus!');
+      onSuccess?.();
+      onClose?.();
+    } catch (err) {
+      toast?.showToast(err.message, 'error');
+      setDeleting(false);
+    }
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="bg-surface2 p-3 rounded-card text-center mb-4 border border-white/[0.05]">
-        <p className="text-xs text-textmuted uppercase tracking-widest">Penjadwalan Untuk Tanggal</p>
+        <p className="text-xs text-textmuted uppercase tracking-widest">{form.schedule_id ? 'Edit Penjadwalan' : 'Penjadwalan Baru'}</p>
         <p className="text-lg font-bold text-white">{new Date(date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
       </div>
 
@@ -76,9 +93,16 @@ function ScheduleModal({ date, settings, employees, onClose, onSuccess }) {
 
       <Input label="Catatan (Opsional)" placeholder="Misal: Tukar shift dengan Reno" value={form.notes} onChange={(e) => setForm({...form, notes: e.target.value})} />
 
-      <Button type="submit" full disabled={submitting || !form.employeeId} className="mt-2">
-        {submitting ? 'Menyimpan...' : 'Simpan Jadwal'}
-      </Button>
+      <div className="flex gap-2 mt-4">
+        {form.schedule_id && (
+          <Button type="button" variant="danger" onClick={handleDelete} disabled={deleting || submitting} className="flex-1">
+            {deleting ? 'Menghapus...' : '🗑️ Hapus'}
+          </Button>
+        )}
+        <Button type="submit" disabled={submitting || deleting || !form.employeeId} className={form.schedule_id ? 'flex-[2]' : 'w-full'}>
+          {submitting ? 'Menyimpan...' : '💾 Simpan Jadwal'}
+        </Button>
+      </div>
     </form>
   );
 }
@@ -99,8 +123,9 @@ export default function KaryawanPage() {
   const [editing, setEditing] = useState(null);
   const [evaluating, setEvaluating] = useState(null);
   
-  // State Khusus Kalender Jadwal
+  // State Khusus Kalender Jadwal (Ditambahkan state Edit)
   const [selectedDate, setSelectedDate] = useState(null);
+  const [editData, setEditData] = useState(null);
 
   const toast = useToast();
 
@@ -219,22 +244,28 @@ export default function KaryawanPage() {
             {calendarDays.map((day, idx) => {
               if (!day) return <div key={`empty-${idx}`} className="bg-transparent border border-transparent rounded p-2 h-24"></div>;
               
-              // Cari siapa saja yang dijadwalkan hari ini dari database Spreadsheet
               const daySchedules = (monthlySchedule || []).filter(s => {
-                 const dbDate = s.date.split('/'); // Dari dd/MM/yyyy
+                 const dbDate = s.date.split('/');
                  return `${dbDate[2]}-${dbDate[1]}-${dbDate[0]}` === day.dateString;
               });
 
               return (
                 <div 
                   key={day.dateString} 
-                  onClick={() => { if(isAdmin) { setSelectedDate(day.dateString); setModal('schedule'); } }}
+                  onClick={() => { if(isAdmin) { setSelectedDate(day.dateString); setEditData(null); setModal('schedule'); } }}
                   className={`bg-surface2 border ${isAdmin ? 'cursor-pointer hover:border-primary/50' : ''} border-white/[0.05] rounded p-1 md:p-2 h-24 md:h-32 overflow-y-auto flex flex-col hide-scrollbar transition-colors`}
                 >
                   <div className="text-right text-xs md:text-sm font-bold text-white mb-1 opacity-70">{day.dayNumber}</div>
                   <div className="space-y-1 flex-1">
                     {daySchedules.map((s, i) => (
-                      <div key={i} className="bg-primary/20 text-primary border border-primary/30 text-[9px] md:text-xs rounded px-1 py-0.5 md:py-1 truncate">
+                      <div 
+                        key={i} 
+                        onClick={(e) => {
+                          e.stopPropagation(); // Mencegah klik background tertular ke sini
+                          if(isAdmin) { setSelectedDate(day.dateString); setEditData(s); setModal('schedule'); }
+                        }}
+                        className="bg-primary/20 hover:bg-primary/40 text-primary border border-primary/30 text-[9px] md:text-xs rounded px-1 py-0.5 md:py-1 truncate cursor-pointer transition-colors"
+                      >
                         <span className="font-bold">{s.Name.split(' ')[0]}</span> <span className="opacity-80">({s.start_time}-{s.end_time})</span>
                       </div>
                     ))}
@@ -283,6 +314,7 @@ export default function KaryawanPage() {
           date={selectedDate} 
           settings={settings} 
           employees={employees} 
+          editData={editData}
           onSuccess={refetchSchedule} 
           onClose={() => setModal(null)} 
         />
