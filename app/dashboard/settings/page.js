@@ -24,10 +24,8 @@ export default function PengaturanPage() {
   const [activeTab, setActiveTab] = useState('keuangan');
   const [saving, setSaving] = useState(false);
 
-  // Tarik data konfigurasi Settings riil dari Google Sheets
   const { data: settingsData, refetch } = useData(() => isOwner ? api.getSystemSettings() : Promise.resolve(null), [isOwner]);
 
-  // State Form
   const [form, setForm] = useState({});
 
   useEffect(() => {
@@ -43,6 +41,11 @@ export default function PengaturanPage() {
         fc_sewa: settingsData.fc_sewa || '',
         fc_lainnya: settingsData.fc_lainnya || '',
         geofence_radius_m: settingsData.geofence_radius_m || '',
+        // Setelan Jam Kerja Default
+        shift_weekday_in: settingsData.shift_weekday_in || '09:00',
+        shift_weekday_out: settingsData.shift_weekday_out || '20:30',
+        shift_weekend_in: settingsData.shift_weekend_in || '10:00',
+        shift_weekend_out: settingsData.shift_weekend_out || '21:30',
       });
     }
   }, [settingsData]);
@@ -55,7 +58,6 @@ export default function PengaturanPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      // API call menggunakan fungsi bawaan callApi('updateProduct') dengan payload khusus
       await fetch('/api/proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -92,7 +94,7 @@ export default function PengaturanPage() {
       <Tabs
         tabs={[
           { value: 'keuangan', label: 'Target & Biaya Tetap' },
-          { value: 'operasional', label: 'Operasional & Lokasi' },
+          { value: 'operasional', label: 'Operasional & Jadwal' },
           { value: 'tampilan', label: 'Tema Tampilan' },
         ]}
         active={activeTab}
@@ -105,17 +107,15 @@ export default function PengaturanPage() {
         {activeTab === 'keuangan' && (
           <div className="space-y-6 flex flex-col animate-fade-in">
             <Card title="🎯 Target Bisnis Bulanan">
-              <p className="text-xs text-textmuted mb-4">Angka ini akan menjadi indikator persentase keberhasilan di halaman Overview.</p>
               <div className="grid grid-cols-2 gap-4">
                 <Input label="Target Revenue / Omzet (Rp)" type="number" required value={form.target_revenue_monthly} onChange={(e) => handleChange('target_revenue_monthly', e.target.value)} />
                 <Input label="Target GPM (%)" type="number" required value={form.target_gpm_percent} onChange={(e) => handleChange('target_gpm_percent', e.target.value)} />
-                <Input label="Target EBITDA / Laba Operasional (Rp)" type="number" required value={form.target_ebitda_monthly} onChange={(e) => handleChange('target_ebitda_monthly', e.target.value)} />
-                <Input label="Target NPM / Laba Bersih (%)" type="number" required value={form.target_npm_percent} onChange={(e) => handleChange('target_npm_percent', e.target.value)} />
+                <Input label="Target EBITDA (Rp)" type="number" required value={form.target_ebitda_monthly} onChange={(e) => handleChange('target_ebitda_monthly', e.target.value)} />
+                <Input label="Target NPM (%)" type="number" required value={form.target_npm_percent} onChange={(e) => handleChange('target_npm_percent', e.target.value)} />
               </div>
             </Card>
 
             <Card title="🏦 Biaya Tetap Bulanan (Fixed Cost / OPEX)">
-              <p className="text-xs text-textmuted mb-4">Masukkan total beban yang harus dibayar <b>setiap bulan</b>. Sistem akan otomatis membaginya secara harian untuk laporan yang akurat.</p>
               <div className="grid grid-cols-2 gap-4">
                 <Input label="Pajak Bulanan (Rp)" type="number" value={form.fc_pajak} onChange={(e) => handleChange('fc_pajak', e.target.value)} />
                 <Input label="Depresiasi Alat (Rp)" type="number" value={form.fc_depresiasi} onChange={(e) => handleChange('fc_depresiasi', e.target.value)} />
@@ -131,17 +131,33 @@ export default function PengaturanPage() {
           </div>
         )}
 
-        {/* TAB OPERASIONAL */}
+        {/* TAB OPERASIONAL & JADWAL */}
         {activeTab === 'operasional' && (
           <div className="space-y-6 flex flex-col animate-fade-in">
             <Card title="📍 Keamanan Lokasi Absensi (Geofence)">
-              <p className="text-xs text-textmuted mb-4">Atur seberapa jauh karyawan boleh melakukan absen dari titik kordinat toko.</p>
               <div className="max-w-xs">
                 <Input label="Radius Toleransi Absensi (Meter)" type="number" required value={form.geofence_radius_m} onChange={(e) => handleChange('geofence_radius_m', e.target.value)} />
               </div>
             </Card>
+
+            <Card title="🕒 Default Jam Kerja (Otomasi Jadwal)">
+              <p className="text-xs text-textmuted mb-4">Jam ini akan otomatis terisi saat Anda mengeklik kalender penjadwalan karyawan.</p>
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-3 bg-surface2 p-3 rounded border border-white/[0.05]">
+                  <p className="font-bold text-sm text-info">Senin - Kamis (Weekday)</p>
+                  <Input label="Jam Masuk" type="time" required value={form.shift_weekday_in} onChange={(e) => handleChange('shift_weekday_in', e.target.value)} />
+                  <Input label="Jam Keluar" type="time" required value={form.shift_weekday_out} onChange={(e) => handleChange('shift_weekday_out', e.target.value)} />
+                </div>
+                <div className="space-y-3 bg-surface2 p-3 rounded border border-white/[0.05]">
+                  <p className="font-bold text-sm text-warning">Jumat - Minggu (Weekend)</p>
+                  <Input label="Jam Masuk" type="time" required value={form.shift_weekend_in} onChange={(e) => handleChange('shift_weekend_in', e.target.value)} />
+                  <Input label="Jam Keluar" type="time" required value={form.shift_weekend_out} onChange={(e) => handleChange('shift_weekend_out', e.target.value)} />
+                </div>
+              </div>
+            </Card>
+
             <Button type="submit" disabled={saving} className="self-end px-8 py-3">
-              {saving ? 'Menyimpan...' : '💾 Simpan Operasional'}
+              {saving ? 'Menyimpan...' : '💾 Simpan Operasional & Jadwal'}
             </Button>
           </div>
         )}
@@ -150,7 +166,6 @@ export default function PengaturanPage() {
       {/* TAB TEMA WARNA */}
       {activeTab === 'tampilan' && (
         <Card title="🎨 Personalisasi Tema Web">
-          <p className="text-xs text-textmuted mb-4">Pilih warna dominan sistem sesuai dengan selera Anda.</p>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {THEMES.map((theme) => (
               <button
@@ -165,7 +180,6 @@ export default function PengaturanPage() {
           </div>
         </Card>
       )}
-
     </div>
   );
 }
