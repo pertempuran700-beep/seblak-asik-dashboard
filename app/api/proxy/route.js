@@ -10,7 +10,7 @@ export async function POST(request) {
   const body = await request.json();
   
   // URL Deployment Terbaru Apps Script Anda:
-  const gasUrl = "https://script.google.com/macros/s/AKfycbynpgOdbKuDzFswLE6j03TW2Zgk08xwP8NWzDzNm4ju8L5gA79HSFThkEOHHjtyV7U/exec";
+  const gasUrl = "https://script.google.com/macros/s/AKfycbxbGkagRLQy-MF0U6bkcqET373c4Dp62nrlkxqu3U0fywGRV_rlu5Ybp34pavjySjn_/exec";
 
   try {
     const res = await fetch(gasUrl, {
