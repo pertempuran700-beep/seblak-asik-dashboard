@@ -5,6 +5,8 @@
 // KUNCI UTAMA: Mematikan total sistem Cache / Memori bawaan Next.js
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+// 🔥 PERBAIKAN AJAIB: Ubah ke Edge Runtime agar kebal dari Timeout 10 detik Vercel!
+export const runtime = 'edge'; 
 
 export async function POST(request) {
   const body = await request.json();
@@ -20,8 +22,10 @@ export async function POST(request) {
       redirect: 'follow',
       cache: 'no-store' // Perintah tegas agar selalu menarik data segar dari Spreadsheet
     });
+    
     const data = await res.json();
     return Response.json(data);
+    
   } catch (err) {
     return Response.json(
       { success: false, error: 'Gagal menghubungi backend: ' + err.message },
