@@ -8,8 +8,8 @@ import { useGeolocation } from '@/hooks/useGeolocation';
 import { useToast } from '@/components/ui/Toast';
 import { formatJam } from '@/lib/utils';
 
-const OFFICE_LAT = -7.046278;
-const OFFICE_LNG = 107.765472;
+const OFFICE_LAT = -7.0463518;
+const OFFICE_LNG = 107.7598885;
 const RADIUS_M = 100;
 
 export default function AttendanceForm({ employeeId, employeeName, todayRecord, onSuccess }) {
@@ -22,7 +22,10 @@ export default function AttendanceForm({ employeeId, employeeName, todayRecord, 
   
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [employees, setEmployees] = useState([]);
-  const [leaveForm, setLeaveForm] = useState({ date: '', reason: '', substituteId: '', compensationType: 'Lembur' });
+  const [leaveForm, setLeaveForm] = useState({ date: '', reason: '', substituteId: '', compensationType: 'Lembur', swapDate: '' });
+  
+  const [dayOffDates, setDayOffDates] = useState([]);
+  const [loadingDayOff, setLoadingDayOff] = useState(false);
   
   const toast = useToast();
 
@@ -31,6 +34,20 @@ export default function AttendanceForm({ employeeId, employeeName, todayRecord, 
       api.listEmployees().then(setEmployees).catch(console.error);
     }
   }, [showLeaveModal]);
+
+  // 🔥 Begitu user pilih "Tukar Hari", tarik daftar tanggal libur terjadwal milik si karyawan
+  useEffect(() => {
+    if (leaveForm.compensationType === 'Tukar Hari' && employeeId) {
+      setLoadingDayOff(true);
+      api.getEmployeeDayOffDates(employeeId)
+        .then((dates) => setDayOffDates(dates || []))
+        .catch(() => setDayOffDates([]))
+        .finally(() => setLoadingDayOff(false));
+    } else {
+      setDayOffDates([]);
+      setLeaveForm((prev) => ({ ...prev, swapDate: '' }));
+    }
+  }, [leaveForm.compensationType, employeeId]);
 
   async function handleClockIn(isFromModal = false) {
     if (!isFromModal && (!withinRange || error)) {
@@ -74,17 +91,27 @@ export default function AttendanceForm({ employeeId, employeeName, todayRecord, 
 
   async function handleRequestLeave(e) {
     e.preventDefault();
+    if (leaveForm.compensationType === 'Tukar Hari' && !leaveForm.swapDate) {
+      toast?.showToast('Pilih tanggal tukar terlebih dahulu', 'error');
+      return;
+    }
     setSubmitting(true);
     try {
-      const res = await api.requestLeave(employeeId, leaveForm.date, leaveForm.reason, leaveForm.substituteId, leaveForm.compensationType);
+      const res = await api.requestLeave(
+        employeeId, leaveForm.date, leaveForm.reason, leaveForm.substituteId,
+        leaveForm.compensationType, leaveForm.compensationType === 'Tukar Hari' ? leaveForm.swapDate : null
+      );
       toast?.showToast(res.message);
       setShowLeaveModal(false);
+      setLeaveForm({ date: '', reason: '', substituteId: '', compensationType: 'Lembur', swapDate: '' });
     } catch (err) {
       toast?.showToast(err.message, 'error');
     } finally {
       setSubmitting(false);
     }
   }
+
+  const selectedSubstitute = employees.find((e) => e.employee_id === leaveForm.substituteId);
 
   return (
     <div className="space-y-4">
@@ -124,7 +151,6 @@ export default function AttendanceForm({ employeeId, employeeName, todayRecord, 
         </Button>
       </div>
 
-      {/* POP-UP STATUS ABSENSI HARI INI (Hanya muncul jika sudah Clock-in tapi belum Clock-out) */}
       {todayRecord && !todayRecord.clock_out && (
         <div className={`mt-2 p-4 rounded-card border text-center animate-pulse ${
           todayRecord.late_minutes && todayRecord.late_minutes !== '00:00' 
@@ -179,7 +205,7 @@ export default function AttendanceForm({ employeeId, employeeName, todayRecord, 
           <div className="bg-surface rounded-card p-6 w-full max-w-sm max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold mb-4">Pengajuan Izin Kerja</h3>
             <form onSubmit={handleRequestLeave} className="space-y-3">
-              <Input label="Tanggal Izin" type="date" required value={leaveForm.date} onChange={(e) => setLeaveForm({...leaveForm, date: e.target.value})} />
+              <Input label="Tanggal Izin (Anda tidak masuk)" type="date" required value={leaveForm.date} onChange={(e) => setLeaveForm({...leaveForm, date: e.target.value})} />
               <Input label="Alasan Izin" required value={leaveForm.reason} onChange={(e) => setLeaveForm({...leaveForm, reason: e.target.value})} />
               <Select 
                 label="Karyawan Pengganti" 
@@ -192,12 +218,42 @@ export default function AttendanceForm({ employeeId, employeeName, todayRecord, 
                 label="Kompensasi Pengganti" 
                 required 
                 value={leaveForm.compensationType} 
-                onChange={(e) => setLeaveForm({...leaveForm, compensationType: e.target.value})}
+                onChange={(e) => setLeaveForm({...leaveForm, compensationType: e.target.value, swapDate: ''})}
                 options={[ {value: 'Lembur', label: 'Lembur (Potong Gaji Anda Rp 50.000)'}, {value: 'Tukar Hari', label: 'Tukar Hari Kerja (Maks 3x Sebulan)'} ]}
               />
+
+              {/* 🔥 BAGIAN BARU: Dropdown Tanggal Tukar (hanya muncul jika Tukar Hari) */}
+              {leaveForm.compensationType === 'Tukar Hari' && (
+                <div className="bg-surface2 p-3 rounded-card border border-primary/20 space-y-2">
+                  <p className="text-xs text-textmuted">
+                    Anda akan masuk menggantikan hari libur Anda sendiri di tanggal berikut{selectedSubstitute ? ` (menggantikan posisi ${selectedSubstitute.full_name} yang izin)` : ''}:
+                  </p>
+                  {loadingDayOff ? (
+                    <p className="text-xs text-textmuted italic">Memuat jadwal libur Anda...</p>
+                  ) : dayOffDates.length === 0 ? (
+                    <p className="text-xs text-danger">
+                      ⚠️ Tidak ditemukan jadwal libur terdaftar untuk Anda dalam 45 hari ke depan. Hubungi Owner untuk memastikan jadwal Anda sudah diinput.
+                    </p>
+                  ) : (
+                    <Select
+                      label="Tanggal Tukar (Hari Libur Anda)"
+                      required
+                      value={leaveForm.swapDate}
+                      onChange={(e) => setLeaveForm({...leaveForm, swapDate: e.target.value})}
+                      options={[
+                        { value: '', label: 'Pilih tanggal libur Anda...' },
+                        ...dayOffDates.map((d) => ({ value: d.date, label: d.label }))
+                      ]}
+                    />
+                  )}
+                </div>
+              )}
+
               <div className="flex gap-2 mt-4">
                 <Button variant="secondary" type="button" full onClick={() => setShowLeaveModal(false)}>Batal</Button>
-                <Button full type="submit" disabled={submitting}>Kirim Request</Button>
+                <Button full type="submit" disabled={submitting || (leaveForm.compensationType === 'Tukar Hari' && dayOffDates.length === 0)}>
+                  Kirim Request
+                </Button>
               </div>
             </form>
           </div>
