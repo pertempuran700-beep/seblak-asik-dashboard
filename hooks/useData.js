@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 // Memori Global Sementara (Cache) agar pindah tab jadi instan 0 detik
 const globalCache = {};
 
-export function useData(fetcherFn, dependencies = [], pollingInterval = 15000) {
+export function useData(fetcherFn, dependencies = [], pollingInterval = 30000) {
   // Membuat ID unik untuk setiap request berdasarkan parameter yang dikirim
   const cacheKey = fetcherFn.toString() + JSON.stringify(dependencies);
   
