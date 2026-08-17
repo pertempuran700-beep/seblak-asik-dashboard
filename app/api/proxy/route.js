@@ -9,7 +9,7 @@ export async function POST(request) {
   const body = await request.json();
   
   // PASTIKAN URL INI SAMA PERSIS DENGAN URL DEPLOYMENT TERBARU ANDA
-  const gasUrl = "https://script.google.com/macros/s/AKfycbwQuK8-SnN36_MnwK2mTmxAbF-HWVicNiNGhnlX0eoZJXxp06XKqY5ou8-xrLO2sFQP/exec";
+  const gasUrl = "https://script.google.com/macros/s/AKfycbwQ3OHs52bdRcf7c5ETa2mSXhAE_kJRTsWbWR77gUtKrZjBylgKw4qgTBYsXmuuZHj_/exec";
 
   try {
     const res = await fetch(gasUrl, {
