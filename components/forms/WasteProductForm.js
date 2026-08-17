@@ -27,14 +27,15 @@ export default function WasteProductForm({ products, onSuccess, onClose }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!productId || !quantity) {
-      toast?.showToast('Lengkapi semua kolom', 'error');
+    const qtyNum = Number(quantity);
+    if (!productId || !quantity || qtyNum <= 0) {
+      toast?.showToast('Lengkapi semua kolom dengan jumlah yang valid', 'error');
       return;
     }
     setSubmitting(true);
     try {
-      await api.addWasteProduct(productId, Number(quantity), notes);
-      toast?.showToast(`Waste tercatat: -${quantity} ${selectedProduct?.sell_unit || ''} ${selectedProduct?.name || ''}`);
+      await api.addWasteProduct(productId, qtyNum, notes);
+      toast?.showToast(`Waste tercatat: -${qtyNum} ${selectedProduct?.name || ''}`);
       onSuccess?.();
       onClose?.();
     } catch (err) {
@@ -66,17 +67,21 @@ export default function WasteProductForm({ products, onSuccess, onClose }) {
         disabled={!category}
         options={[
           { value: '', label: category ? '-- Pilih Produk --' : 'Pilih kategori dulu' },
-          ...filteredProducts.map((p) => ({ value: p.product_id, label: `${p.name} (sisa ${p.current_stock} ${p.sell_unit})` })),
+          ...filteredProducts.map((p) => ({ value: p.product_id, label: `${p.name} (sisa ${p.current_stock})` })),
         ]}
       />
 
       {selectedProduct && (
-        <Input
-          label={`3. Jumlah Waste (${selectedProduct.sell_unit})`}
-          type="number" min="1" max={selectedProduct.current_stock} required
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
-        />
+        <>
+          <Input
+            label="3. Jumlah Waste"
+            type="number"
+            required
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+          />
+          <p className="text-xs text-textmuted">Sisa stok saat ini: <span className="font-bold text-white">{selectedProduct.current_stock}</span></p>
+        </>
       )}
 
       <Input label="Catatan (opsional)" placeholder="mis. Basi, jatuh, kadaluarsa" value={notes} onChange={(e) => setNotes(e.target.value)} />
