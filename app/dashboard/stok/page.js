@@ -117,12 +117,11 @@ export default function StokPage() {
   const filtered = (stock || []).filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
   const criticalStock = (stock || []).filter((p) => p.current_stock <= p.min_stock);
 
-  const columns = [
+ const columns = [
     { key: 'kode', label: 'Kode' },
     { key: 'name', label: 'Produk' },
     { key: 'category', label: 'Kategori' },
     { key: 'current_stock', label: 'Sisa Stok', render: (r) => <span className="font-bold text-lg">{r.current_stock}</span> },
-    { key: 'sell_unit', label: 'Satuan', render: (r) => <span className="text-textmuted uppercase text-xs tracking-wider">{r.sell_unit || '-'}</span> },
     { key: 'sell_price', label: 'Harga Jual', render: (r) => formatRupiah(r.sell_price) },
     { key: 'hpp', label: 'HPP', render: (r) => formatRupiah(r.hpp) },
     {
@@ -178,22 +177,20 @@ export default function StokPage() {
             <Card title="⚠️ WARNING PRODUK!" className="border-l-4 border-l-danger bg-danger/5">
               <p className="text-sm text-textmuted mb-4">Produk di bawah ini telah melewati ambang batas minimal stok. Segera lakukan pengadaan (Stock In).</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {criticalStock.map((p, i) => (
-                  <div key={i} className="flex justify-between items-center bg-surface2 p-3 rounded-card border border-danger/30 shadow-sm transition-all hover:border-danger/60">
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{p.current_stock <= 0 ? '🔴' : '🟡'}</span>
-                      <div>
-                        <p className="font-bold text-sm text-white truncate w-32">{p.name}</p>
-                        <p className="text-xs text-textmuted">Batas Aman: {p.min_stock} {p.sell_unit}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-black text-danger text-xl">{p.current_stock}</p>
-                      <p className="text-[10px] uppercase tracking-wider text-danger font-bold">{p.sell_unit}</p>
-                    </div>
+            {criticalStock.map((p, i) => (
+              <div key={i} className="flex justify-between items-center bg-surface2 p-3 rounded-card border border-danger/30 shadow-sm transition-all hover:border-danger/60">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{p.current_stock <= 0 ? '🔴' : '🟡'}</span>
+                  <div>
+                    <p className="font-bold text-sm text-white truncate w-32">{p.name}</p>
                   </div>
-                ))}
+                </div>
+                <div className="text-right">
+                  <p className="font-black text-danger text-xl">{p.current_stock}</p>
+                </div>
               </div>
+            ))}
+          </div>
             </Card>
           )}
 
