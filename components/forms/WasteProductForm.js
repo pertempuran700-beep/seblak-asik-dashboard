@@ -67,7 +67,7 @@ export default function WasteProductForm({ products, onSuccess, onClose }) {
         disabled={!category}
         options={[
           { value: '', label: category ? '-- Pilih Produk --' : 'Pilih kategori dulu' },
-          ...filteredProducts.map((p) => ({ value: p.product_id, label: `${p.name} (sisa ${p.current_stock})` })),
+          ...filteredProducts.map((p) => ({ value: p.product_id, label: `${p.name} (sisa ${Math.round(p.current_stock)}),
         ]}
       />
 
@@ -80,7 +80,7 @@ export default function WasteProductForm({ products, onSuccess, onClose }) {
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
           />
-          <p className="text-xs text-textmuted">Sisa stok saat ini: <span className="font-bold text-white">{selectedProduct.current_stock}</span></p>
+          <p className="text-xs text-textmuted">Sisa stok saat ini: <span className="font-bold text-white">{Math.round(selectedProduct.current_stock)}</span></p>
         </>
       )}
 
