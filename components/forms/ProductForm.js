@@ -4,6 +4,7 @@ import Button from '../ui/Button';
 import { Input } from '../ui/Input';
 import { api } from '@/lib/api';
 import { useToast } from '../ui/Toast';
+import { formatRupiah } from '@/lib/utils';
 
 export default function ProductForm({ product, onSuccess, onClose }) {
   const isEdit = Boolean(product);
@@ -19,7 +20,6 @@ export default function ProductForm({ product, onSuccess, onClose }) {
     satuan: product?.unit || '',
     satuanJual: product?.sell_unit || '',
     hargaJual: product?.sell_price || '',
-    hpp: product?.hpp || '',
     minStok: product?.min_stock || 5,
   });
   const [submitting, setSubmitting] = useState(false);
@@ -28,6 +28,11 @@ export default function ProductForm({ product, onSuccess, onClose }) {
   function set(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
+
+  // 🔥 HPP dihitung otomatis di frontend hanya untuk PREVIEW (perhitungan asli tetap di backend)
+  const computedHpp = Number(form.isi) > 0 && form.hargaBeli
+    ? Math.round(Number(form.hargaBeli) / Number(form.isi))
+    : 0;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -52,13 +57,7 @@ export default function ProductForm({ product, onSuccess, onClose }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
-        <Input
-          label="Kode (kosongkan = auto)"
-          placeholder="mis. tl001"
-          value={form.kode}
-          disabled={isEdit}
-          onChange={(e) => set('kode', e.target.value)}
-        />
+        <Input label="Kode (kosongkan = auto)" placeholder="mis. tl001" value={form.kode} disabled={isEdit} onChange={(e) => set('kode', e.target.value)} />
         <Input label="Kategori" placeholder="mis. Telur, Plastik, Minuman" required value={form.category} onChange={(e) => set('category', e.target.value)} />
       </div>
 
@@ -80,13 +79,12 @@ export default function ProductForm({ product, onSuccess, onClose }) {
         <Input label="Harga Beli / Satuan Beli" type="number" min="0" value={form.hargaBeli} onChange={(e) => set('hargaBeli', e.target.value)} />
         <Input label="Harga Jual / Satuan Jual" type="number" min="0" required value={form.hargaJual} onChange={(e) => set('hargaJual', e.target.value)} />
       </div>
-      <Input
-        label="HPP / Satuan Jual (manual)"
-        type="number" min="0"
-        placeholder="Harga pokok per pcs — Anda isi sendiri"
-        value={form.hpp}
-        onChange={(e) => set('hpp', e.target.value)}
-      />
+
+      <div className="bg-surface2 border border-white/[0.08] rounded-input px-3 py-3">
+        <p className="text-xs text-textmuted mb-1">HPP / Satuan Jual (otomatis)</p>
+        <p className="text-lg font-bold text-success">{formatRupiah(computedHpp)}</p>
+        <p className="text-[10px] text-textmuted mt-1">Dihitung otomatis: Harga Beli ÷ Isi per Satuan Beli</p>
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <Input label="Berat (opsional)" value={form.berat} onChange={(e) => set('berat', e.target.value)} />
