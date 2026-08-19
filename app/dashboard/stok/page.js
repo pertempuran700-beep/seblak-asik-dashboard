@@ -121,7 +121,7 @@ export default function StokPage() {
     { key: 'kode', label: 'Kode' },
     { key: 'name', label: 'Produk' },
     { key: 'category', label: 'Kategori' },
-    { key: 'current_stock', label: 'Sisa Stok', render: (r) => <span className="font-bold text-lg">{r.current_stock}</span> },
+    { key: 'current_stock', label: 'Sisa Stok', render: (r) => <span className="font-bold text-lg">{Math.round(r.current_stock)}</span> },
     { key: 'sell_price', label: 'Harga Jual', render: (r) => formatRupiah(r.sell_price) },
     { key: 'hpp', label: 'HPP', render: (r) => formatRupiah(r.hpp) },
     {
@@ -185,8 +185,8 @@ export default function StokPage() {
                     <p className="font-bold text-sm text-white truncate w-32">{p.name}</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-black text-danger text-xl">{p.current_stock}</p>
+                   <div className="text-right">
+                  <p className="font-black text-danger text-xl">{Math.round(p.current_stock)}</p>
                 </div>
               </div>
             ))}
