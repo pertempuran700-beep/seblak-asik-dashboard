@@ -41,7 +41,7 @@ export default function StockInForm({ products, vendors, onSuccess, onClose }) {
   const selectedProduct = products.find((p) => p.product_id === finalProductId);
   
   const isi = Number(selectedProduct?.content_qty) || 0;
-  const convertedQty = isi > 0 && form.qtyBeli ? Number(form.qtyBeli) * isi : 0;
+    const convertedQty = isi > 0 && form.qtyBeli ? Math.round(Number(form.qtyBeli) * isi) : 0;
 
   function set(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
