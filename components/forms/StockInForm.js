@@ -106,10 +106,10 @@ export default function StockInForm({ products, vendors, onSuccess, onClose }) {
         />
       </div>
 
-      {isi > 0 && form.qtyBeli && (
+            {isi > 0 && form.qtyBeli && (
         <p className="text-xs text-textmuted bg-surface2 rounded-input px-3 py-2 border-l-2 border-success">
-          1 {selectedProduct.unit} = {isi} {selectedProduct.sell_unit} → Gudang bertambah{' '}
-          <span className="text-text font-bold text-success">{convertedQty} {selectedProduct.sell_unit}</span>
+          Gudang akan bertambah{' '}
+          <span className="text-text font-bold text-success">{convertedQty}</span>
           {form.hargaBeli && (
             <> · Total Tagihan: <span className="text-text font-bold">{formatRupiah(Number(form.qtyBeli) * Number(form.hargaBeli))}</span></>
           )}
