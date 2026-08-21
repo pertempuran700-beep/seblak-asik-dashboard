@@ -7,11 +7,13 @@ import Table from '@/components/ui/Table';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import Tabs from '@/components/ui/Tabs';
+import Modal from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Input';
 import { formatRupiah, currentMonthYear, formatTanggalPendek } from '@/lib/utils';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import OtherCostExpenseForm from '@/components/forms/OtherCostExpenseForm';
+import ManageOtherCostItemsForm from '@/components/forms/ManageOtherCostItemsForm';
 
-// Komponen Multi-Line Chart Khusus Keuangan
 function FinanceTrendChart({ data }) {
   return (
     <ResponsiveContainer width="100%" height={280}>
@@ -52,15 +54,23 @@ function yearOptions() {
 
 export default function KeuanganPage() {
   const { month: curMonth, year: curYear } = currentMonthYear();
+  const [topTab, setTopTab] = useState('ringkasan');
   const [tabView, setTabView] = useState('bulanan');
-  
+
   const [monthPeriod, setMonthPeriod] = useState(`${curYear}-${String(curMonth).padStart(2, '0')}`);
   const [yearPeriod, setYearPeriod] = useState(String(curYear));
+
+  const [otherCostModal, setOtherCostModal] = useState(null); // 'add' | 'manage' | null
+  const { data: otherCostItems, refetch: refetchItems } = useData(() => api.listOtherCostItems(), []);
+  const { data: otherCostReport, loading: otherCostLoading, refetch: refetchOtherCosts } = useData(
+    () => api.getOtherCostsReport(Number(monthPeriod.split('-')[1]), Number(monthPeriod.split('-')[0])),
+    [monthPeriod]
+  );
 
   const targetYear = tabView === 'bulanan' ? Number(monthPeriod.split('-')[0]) : Number(yearPeriod);
   const targetMonth = tabView === 'bulanan' ? Number(monthPeriod.split('-')[1]) : null;
 
-  const { data: statement, loading, refetch } = useData(() => api.generateIncomeStatement(targetMonth, targetYear), [targetMonth, targetYear, tabView]);
+  const { data: statement, loading } = useData(() => api.generateIncomeStatement(targetMonth, targetYear), [targetMonth, targetYear, tabView]);
   const { data: apar } = useData(() => api.getAPAR(), []);
   const { data: expensesRaw } = useData(() => api.listExpenses({ month: targetMonth, year: targetYear }), [targetMonth, targetYear, tabView]);
 
@@ -72,7 +82,6 @@ export default function KeuanganPage() {
     return api.getSales({ startDate: startStr, endDate: endStr });
   }, [targetMonth, targetYear, tabView]);
 
- // LOGIKA GRAFIK INTERAKTIF
   const chartData = useMemo(() => {
     if (tabView === 'tahunan' && statement?.monthly_breakdown) {
       return statement.monthly_breakdown.map(m => ({
@@ -80,38 +89,28 @@ export default function KeuanganPage() {
       }));
     } else if (tabView === 'bulanan' && rawSales && statement) {
       const grouped = {};
-      
-      // Tambahkan filter !s.is_qris di sini
       rawSales.filter(s => !s.is_qris).forEach(s => {
         const dateStr = formatTanggalPendek(s.date);
         grouped[dateStr] = (grouped[dateStr] || 0) + Number(s.yang_diterima || s.total || 0);
       });
 
-      // Menghitung Rasio Proporsional dari Buku Besar Bulanan
-      const revTotal = statement.revenue || 1; 
+      const revTotal = statement.revenue || 1;
       const cogsRatio = statement.cogs / revTotal;
       const opexVarRatio = statement.opex_var / revTotal;
-      
-      // Membagi Biaya Tetap secara Harian
+
       const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
       const dailyFixedOpex = statement.opex_fixed / daysInMonth;
       const dailyTaxDep = statement.depreciation / daysInMonth;
 
       return Object.keys(grouped).map(date => {
         const dailyRev = grouped[date];
-        
-        // Kalkulasi Matriks Harian
         const dailyCogs = dailyRev * cogsRatio;
         const dailyGross = dailyRev - dailyCogs;
         const dailyOpex = (dailyRev * opexVarRatio) + dailyFixedOpex;
         const dailyNet = dailyGross - dailyOpex - dailyTaxDep;
 
-        return { 
-          label: date, 
-          revenue: dailyRev, 
-          grossProfit: dailyGross, 
-          opex: dailyOpex, 
-          netProfit: dailyNet 
+        return {
+          label: date, revenue: dailyRev, grossProfit: dailyGross, opex: dailyOpex, netProfit: dailyNet
         };
       }).reverse();
     }
@@ -132,90 +131,159 @@ export default function KeuanganPage() {
           <h1 className="text-2xl font-bold flex items-center gap-2">💰 Papan Utama Keuangan</h1>
           <p className="text-sm text-textmuted">Kalkulasi Laporan Laba Rugi Komprehensif (Income Statement)</p>
         </div>
-        
-        <div className="flex items-center gap-3">
-          <Tabs tabs={[{ value: 'bulanan', label: 'Per-Bulan' }, { value: 'tahunan', label: 'Per-Tahun' }]} active={tabView} onChange={setTabView} />
-          <div className="w-40">
-            {tabView === 'bulanan' ? (
-              <Select options={monthOptions()} value={monthPeriod} onChange={(e) => setMonthPeriod(e.target.value)} />
-            ) : (
-              <Select options={yearOptions()} value={yearPeriod} onChange={(e) => setYearPeriod(e.target.value)} />
-            )}
-          </div>
-        </div>
+        <Tabs
+          tabs={[{ value: 'ringkasan', label: 'Ringkasan' }, { value: 'lainnya', label: 'Biaya Lainnya' }]}
+          active={topTab}
+          onChange={setTopTab}
+        />
       </div>
 
-      {loading ? (
-        <p className="text-center py-10 text-textmuted">Memuat buku besar keuangan...</p>
-      ) : statement ? (
+      {topTab === 'ringkasan' && (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <MetricCard label="Revenue" value={statement.revenue} color="white" />
-            <MetricCard label={`Gross Profit (${statement.gross_margin_pct.toFixed(1)}%)`} value={statement.gross_profit} color="info" />
-            <MetricCard label="Total OPEX" value={statement.opex} color="danger" />
-            <MetricCard label="Net Profit (NPM)" value={statement.net_profit} color="success" />
-          </div>
-
-          <Card title={`📈 Tren Keuangan ${tabView === 'tahunan' ? '12 Bulan Terakhir' : 'Harian'}`}>
-            <FinanceTrendChart data={chartData} />
-          </Card>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card title={`Buku Besar Income Statement — ${statement.period}`}>
-              <div className="space-y-3 font-medium text-sm">
-                <div className="flex justify-between"><span className="text-textmuted">Pendapatan Kotor (Revenue)</span><span>{formatRupiah(statement.revenue)}</span></div>
-                <div className="flex justify-between text-danger"><span className="text-textmuted">(-) HPP Bahan Baku (COGS)</span><span>-{formatRupiah(statement.cogs)}</span></div>
-                <div className="flex justify-between border-t border-white/[0.1] pt-2 font-bold text-info"><span>Laba Kotor (Gross Profit)</span><span>{formatRupiah(statement.gross_profit)}</span></div>
-                
-                <div className="flex justify-between text-danger mt-4"><span className="text-textmuted">(-) OPEX Variabel (Pengeluaran Kas)</span><span>-{formatRupiah(statement.opex_var)}</span></div>
-                <div className="flex justify-between text-danger"><span className="text-textmuted">(-) OPEX Tetap (Gaji, Sewa, dll)</span><span>-{formatRupiah(statement.opex_fixed)}</span></div>
-                <div className="flex justify-between border-t border-white/[0.1] pt-2 font-bold text-warning"><span>EBITDA (Laba Operasional)</span><span>{formatRupiah(statement.ebitda)}</span></div>
-                
-                <div className="flex justify-between text-danger mt-4"><span className="text-textmuted">(-) Pajak & Depresiasi</span><span>-{formatRupiah(statement.depreciation)}</span></div>
-                <div className="flex justify-between border-t border-white/[0.2] pt-2 font-black text-success text-lg"><span>Laba Bersih (Net Profit / NPM)</span><span>{formatRupiah(statement.net_profit)}</span></div>
-              </div>
-            </Card>
-
-            <div className="space-y-6">
-              <Card title="💸 Ringkasan Pengeluaran Kas (Variabel)">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-4">
+            <div className="flex items-center gap-3">
+              <Tabs tabs={[{ value: 'bulanan', label: 'Per-Bulan' }, { value: 'tahunan', label: 'Per-Tahun' }]} active={tabView} onChange={setTabView} />
+              <div className="w-40">
                 {tabView === 'bulanan' ? (
-                  <Table
-                    columns={[
-                      { key: 'date', label: 'Tanggal', render: (r) => formatTanggalPendek(r.date) },
-                      { key: 'category', label: 'Kategori' },
-                      { key: 'amount', label: 'Nominal', render: (r) => <span className="font-bold text-danger">{formatRupiah(r.amount)}</span> },
-                    ]}
-                    rows={(expensesRaw || []).slice(0, 7)}
-                    emptyMessage="Tidak ada pengeluaran kas di bulan ini"
-                  />
+                  <Select options={monthOptions()} value={monthPeriod} onChange={(e) => setMonthPeriod(e.target.value)} />
                 ) : (
-                  <Table
-                    columns={[
-                      { key: 'period', label: 'Bulan' },
-                      { key: 'total', label: 'Total Pengeluaran', render: (r) => <span className="font-bold text-danger">{formatRupiah(r.total)}</span> },
-                    ]}
-                    rows={statement.expense_breakdown}
-                    emptyMessage="Tidak ada pengeluaran kas di tahun ini"
-                  />
+                  <Select options={yearOptions()} value={yearPeriod} onChange={(e) => setYearPeriod(e.target.value)} />
                 )}
-              </Card>
-
-              <Card title="📋 Status Hutang Terbuka (Vendor)">
-                <Table
-                  columns={[
-                    { key: 'counterparty', label: 'Nama Vendor' },
-                    { key: 'remaining', label: 'Sisa Hutang', render: (r) => <span className="font-bold text-danger">{formatRupiah(r.remaining)}</span> },
-                  ]}
-                  rows={(apar || []).filter(r => r.type === 'Payable' && r.status !== 'Paid').slice(0, 5)}
-                  emptyMessage="Semua hutang lunas!"
-                />
-              </Card>
+              </div>
             </div>
           </div>
+
+          {loading ? (
+            <p className="text-center py-10 text-textmuted">Memuat buku besar keuangan...</p>
+          ) : statement ? (
+            <>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <MetricCard label="Revenue" value={statement.revenue} color="white" />
+                <MetricCard label={`Gross Profit (${statement.gross_margin_pct.toFixed(1)}%)`} value={statement.gross_profit} color="info" />
+                <MetricCard label="Total OPEX" value={statement.opex} color="danger" />
+                <MetricCard label="Net Profit (NPM)" value={statement.net_profit} color="success" />
+              </div>
+
+              <Card title={`📈 Tren Keuangan ${tabView === 'tahunan' ? '12 Bulan Terakhir' : 'Harian'}`}>
+                <FinanceTrendChart data={chartData} />
+              </Card>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card title={`Buku Besar Income Statement — ${statement.period}`}>
+                  <div className="space-y-3 font-medium text-sm">
+                    <div className="flex justify-between"><span className="text-textmuted">Pendapatan Kotor (Revenue)</span><span>{formatRupiah(statement.revenue)}</span></div>
+                    <div className="flex justify-between text-danger"><span className="text-textmuted">(-) HPP Bahan Baku (COGS)</span><span>-{formatRupiah(statement.cogs)}</span></div>
+                    <div className="flex justify-between border-t border-white/[0.1] pt-2 font-bold text-info"><span>Laba Kotor (Gross Profit)</span><span>{formatRupiah(statement.gross_profit)}</span></div>
+
+                    <div className="flex justify-between text-danger mt-4"><span className="text-textmuted">(-) OPEX Variabel (Pengeluaran Kas)</span><span>-{formatRupiah(statement.opex_var)}</span></div>
+                    <div className="flex justify-between text-danger"><span className="text-textmuted">(-) OPEX Tetap (Gaji, Sewa, dll)</span><span>-{formatRupiah(statement.opex_fixed)}</span></div>
+                    <div className="flex justify-between border-t border-white/[0.1] pt-2 font-bold text-warning"><span>EBITDA (Laba Operasional)</span><span>{formatRupiah(statement.ebitda)}</span></div>
+
+                    <div className="flex justify-between text-danger mt-4"><span className="text-textmuted">(-) Pajak & Depresiasi</span><span>-{formatRupiah(statement.depreciation)}</span></div>
+                    <div className="flex justify-between border-t border-white/[0.2] pt-2 font-black text-success text-lg"><span>Laba Bersih (Net Profit / NPM)</span><span>{formatRupiah(statement.net_profit)}</span></div>
+                  </div>
+                </Card>
+
+                <div className="space-y-6">
+                  <Card title="💸 Ringkasan Pengeluaran Kas (Variabel)">
+                    {tabView === 'bulanan' ? (
+                      <Table
+                        columns={[
+                          { key: 'date', label: 'Tanggal', render: (r) => formatTanggalPendek(r.date) },
+                          { key: 'category', label: 'Kategori' },
+                          { key: 'amount', label: 'Nominal', render: (r) => <span className="font-bold text-danger">{formatRupiah(r.amount)}</span> },
+                        ]}
+                        rows={(expensesRaw || []).slice(0, 7)}
+                        emptyMessage="Tidak ada pengeluaran kas di bulan ini"
+                      />
+                    ) : (
+                      <Table
+                        columns={[
+                          { key: 'period', label: 'Bulan' },
+                          { key: 'total', label: 'Total Pengeluaran', render: (r) => <span className="font-bold text-danger">{formatRupiah(r.total)}</span> },
+                        ]}
+                        rows={statement.expense_breakdown}
+                        emptyMessage="Tidak ada pengeluaran kas di tahun ini"
+                      />
+                    )}
+                  </Card>
+
+                  <Card title="📋 Status Hutang Terbuka (Vendor)">
+                    <Table
+                      columns={[
+                        { key: 'counterparty', label: 'Nama Vendor' },
+                        { key: 'remaining', label: 'Sisa Hutang', render: (r) => <span className="font-bold text-danger">{formatRupiah(r.remaining)}</span> },
+                      ]}
+                      rows={(apar || []).filter(r => r.type === 'Payable' && r.status !== 'Paid').slice(0, 5)}
+                      emptyMessage="Semua hutang lunas!"
+                    />
+                  </Card>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-center py-10 text-textmuted">Data gagal dimuat.</p>
+          )}
         </>
-      ) : (
-        <p className="text-center py-10 text-textmuted">Data gagal dimuat.</p>
       )}
+
+      {topTab === 'lainnya' && (
+        <div className="space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="w-40">
+              <Select options={monthOptions()} value={monthPeriod} onChange={(e) => setMonthPeriod(e.target.value)} />
+            </div>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => setOtherCostModal('manage')}>⚙️ Kelola Item</Button>
+              <Button onClick={() => setOtherCostModal('add')}>+ Catat Biaya</Button>
+            </div>
+          </div>
+
+          {otherCostLoading ? (
+            <p className="text-center py-10 text-textmuted">Memuat data biaya lainnya...</p>
+          ) : (
+            <>
+              <div className="bg-surface2 p-4 rounded-card border-l-4 border-warning">
+                <p className="text-xs text-textmuted uppercase mb-1">Total Biaya Lainnya Bulan Ini</p>
+                <p className="text-2xl font-bold text-warning">{formatRupiah(otherCostReport?.total || 0)}</p>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <Card title="📂 Breakdown per Item">
+                  <Table
+                    columns={[
+                      { key: 'item', label: 'Item' },
+                      { key: 'total', label: 'Total', render: (r) => formatRupiah(r.total) },
+                    ]}
+                    rows={otherCostReport?.breakdown || []}
+                    emptyMessage="Belum ada biaya lainnya bulan ini"
+                  />
+                </Card>
+                <Card title="📋 Riwayat Pencatatan">
+                  <Table
+                    columns={[
+                      { key: 'date', label: 'Tanggal', render: (r) => new Date(r.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) },
+                      { key: 'description', label: 'Item' },
+                      { key: 'amount', label: 'Nominal', render: (r) => formatRupiah(r.amount) },
+                      { key: 'recorded_by', label: 'Dicatat Oleh' },
+                    ]}
+                    rows={otherCostReport?.records || []}
+                    emptyMessage="Belum ada catatan"
+                  />
+                </Card>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <Modal open={otherCostModal === 'add'} onClose={() => setOtherCostModal(null)} title="💸 Catat Biaya Lainnya">
+        <OtherCostExpenseForm items={otherCostItems} onSuccess={refetchOtherCosts} onClose={() => setOtherCostModal(null)} />
+      </Modal>
+
+      <Modal open={otherCostModal === 'manage'} onClose={() => setOtherCostModal(null)} title="⚙️ Kelola Item Biaya Lainnya">
+        <ManageOtherCostItemsForm items={otherCostItems} onSuccess={refetchItems} />
+      </Modal>
     </div>
   );
 }
