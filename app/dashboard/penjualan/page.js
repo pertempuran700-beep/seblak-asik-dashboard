@@ -34,10 +34,9 @@ export default function PenjualanPage() {
     return { start: getYYYYMMDD(start), end };
   }, [period, activeCustomRange]);
 
-  // Hanya menarik data dari backend berdasarkan tanggal yang difilter agar tidak lag
-  const { data: sales, loading } = useData(() => api.getSales({ 
-    startDate: dateRangeStr.start, 
-    endDate: dateRangeStr.end 
+  const { data: sales, loading } = useData(() => api.getSales({
+    startDate: dateRangeStr.start,
+    endDate: dateRangeStr.end
   }), [dateRangeStr]);
 
   const handleCustomApply = () => {
@@ -48,23 +47,27 @@ export default function PenjualanPage() {
     }
   };
 
-  // KALKULASI METRIK
-  const totalOmzet = (sales || []).reduce((sum, s) => sum + Number(s.yang_diterima || s.total || 0), 0);
-  // Instruksi: Volume transaksi HANYA menghitung data Sheet Laporan Pemasukan Kasir (Tanpa tab QRIS)
-  const volumeTransaksi = (sales || []).filter(s => !s.is_qris).length;
-  // Rata-rata Penjualan = Total Omzet / Volume (Kasir)
+  // 🔥 PEMISAHAN: Cash/Tunai (Revenue) vs QRIS (metode bayar terpisah, bukan revenue kedua)
+  const cashSales = (sales || []).filter((s) => !s.is_qris);
+  const qrisSales = (sales || []).filter((s) => s.is_qris);
+
+  const totalOmzet = cashSales.reduce((sum, s) => sum + Number(s.yang_diterima || s.total || 0), 0);
+  const volumeTransaksi = cashSales.length;
   const rataRata = volumeTransaksi > 0 ? (totalOmzet / volumeTransaksi) : 0;
 
- // DATA GRAFIK (Hanya Kasir Tunai)
+  const qrisGross = qrisSales.reduce((sum, s) => sum + Number(s.total || 0), 0);
+  const qrisMdr = qrisSales.reduce((sum, s) => sum + Number(s.mdr || 0), 0);
+  const qrisNet = qrisSales.reduce((sum, s) => sum + Number(s.yang_diterima || 0), 0);
+
+  // DATA GRAFIK (Hanya Kasir Tunai — Revenue murni)
   const chartData = useMemo(() => {
     const grouped = {};
-    // Tambahkan filter !s.is_qris sebelum forEach
-    (sales || []).filter(s => !s.is_qris).forEach(s => {
+    cashSales.forEach((s) => {
       const dateStr = formatTanggalPendek(s.date);
       grouped[dateStr] = (grouped[dateStr] || 0) + Number(s.yang_diterima || s.total || 0);
     });
-    return Object.keys(grouped).map(date => ({ label: date, revenue: grouped[date] })).reverse();
-  }, [sales]);
+    return Object.keys(grouped).map((date) => ({ label: date, revenue: grouped[date] })).reverse();
+  }, [cashSales]);
 
   return (
     <div className="space-y-6">
@@ -73,8 +76,7 @@ export default function PenjualanPage() {
           <h1 className="text-xl font-bold">Brankas Data Penjualan</h1>
           <p className="text-textmuted text-sm">Pusat pemantauan omzet riil dan ringkasan transaksi toko</p>
         </div>
-        
-        {/* Tombol Filter Tanggal */}
+
         <div className="flex bg-surface2 p-1 rounded-lg gap-1 border border-border/50 relative items-center">
           {[
             { id: '30', label: '30 Hari' },
@@ -99,9 +101,8 @@ export default function PenjualanPage() {
             {showCalendar && (
               <div className="absolute right-0 top-full mt-2 w-64 bg-surface border border-border rounded-xl shadow-2xl p-4 z-50 text-left">
                 <div className="space-y-3">
-                 {/* Ubah bg-background dan text-white menjadi bg-white dan text-black */}
-<input type="date" value={customRange.start} onChange={(e) => setCustomDates({ ...customRange, start: e.target.value })} className="w-full bg-white border border-border/50 rounded p-2 text-xs text-black" />
-<input type="date" value={customRange.end} onChange={(e) => setCustomDates({ ...customRange, end: e.target.value })} className="w-full bg-white border border-border/50 rounded p-2 text-xs text-black" />
+                  <input type="date" value={customRange.start} onChange={(e) => setCustomDates({ ...customRange, start: e.target.value })} className="w-full bg-white border border-border/50 rounded p-2 text-xs text-black" />
+                  <input type="date" value={customRange.end} onChange={(e) => setCustomDates({ ...customRange, end: e.target.value })} className="w-full bg-white border border-border/50 rounded p-2 text-xs text-black" />
                   <button onClick={handleCustomApply} className="w-full bg-primary text-white text-xs font-bold py-2 rounded">Terapkan</button>
                 </div>
               </div>
@@ -110,14 +111,36 @@ export default function PenjualanPage() {
         </div>
       </div>
 
-      {/* Ringkasan Dashboard Keuangan Seblak Asik */}
+      {/* Ringkasan Revenue (MURNI, tanpa QRIS) */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <MetricCard label="Omzet" value={formatRupiah(totalOmzet)} />
+        <MetricCard label="Omzet (Tunai)" value={formatRupiah(totalOmzet)} />
         <MetricCard label="Volume Transaksi" value={volumeTransaksi} />
         <MetricCard label="Rata-rata Penjualan" value={formatRupiah(rataRata)} />
       </div>
 
-      <Card title="Tren Grafik Omzet">
+      {/* 🔥 KARTU QRIS TERPISAH: bukan revenue, murni monitor metode bayar */}
+      <div className="bg-surface2 border border-border/50 rounded-card p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-xl">📱</span>
+          <h3 className="text-sm font-bold text-textmuted uppercase tracking-wider">QRIS (Metode Pembayaran Terpisah)</h3>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-background/40 rounded-lg p-3">
+            <p className="text-xs text-textmuted mb-1">Total Transaksi</p>
+            <p className="text-lg font-bold">{formatRupiah(qrisGross)}</p>
+          </div>
+          <div className="bg-background/40 rounded-lg p-3">
+            <p className="text-xs text-textmuted mb-1">Biaya Admin (MDR)</p>
+            <p className="text-lg font-bold text-danger">-{formatRupiah(qrisMdr)}</p>
+          </div>
+          <div className="bg-background/40 rounded-lg p-3">
+            <p className="text-xs text-textmuted mb-1">Diterima Bersih</p>
+            <p className="text-lg font-bold text-success">{formatRupiah(qrisNet)}</p>
+          </div>
+        </div>
+      </div>
+
+      <Card title="Tren Grafik Omzet (Tunai)">
         {chartData.length ? <SalesLineChart data={chartData} /> : <p className="text-textmuted text-sm text-center py-10">Data tidak tersedia untuk rentang ini</p>}
       </Card>
 
