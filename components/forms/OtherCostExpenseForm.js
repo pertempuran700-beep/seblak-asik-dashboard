@@ -13,6 +13,7 @@ export default function OtherCostExpenseForm({ items, onSuccess, onClose }) {
   const toast = useToast();
 
   const activeItems = (items || []).filter((i) => i.is_active === true || i.is_active === 'TRUE');
+  const selectedItem = activeItems.find((i) => i.item_id === itemId);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -38,6 +39,12 @@ export default function OtherCostExpenseForm({ items, onSuccess, onClose }) {
         onChange={(e) => setItemId(e.target.value)}
         options={[{ value: '', label: '-- Pilih Item --' }, ...activeItems.map((i) => ({ value: i.item_id, label: i.item_name }))]}
       />
+      {selectedItem && (
+        <p className="text-xs text-textmuted">
+          Kategori: <span className={`font-bold ${selectedItem.category === 'Bumbu' ? 'text-warning' : 'text-textmuted'}`}>{selectedItem.category || 'Lain-lain'}</span>
+          {' — '}{selectedItem.category === 'Bumbu' ? 'akan masuk ke COGS' : 'akan masuk ke OPEX Variabel'}
+        </p>
+      )}
       <Input label="Nominal (Rp)" type="number" min="0" required value={amount} onChange={(e) => setAmount(e.target.value)} />
       <Input label="Catatan (opsional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
       <Button type="submit" full disabled={submitting || !itemId}>
