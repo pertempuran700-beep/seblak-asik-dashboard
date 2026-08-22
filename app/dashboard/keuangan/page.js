@@ -52,6 +52,82 @@ function yearOptions() {
   return opts;
 }
 
+function CashOutflowDashboard({ monthPeriod }) {
+  const [year, month] = monthPeriod.split('-').map(Number);
+  const { data: report, loading } = useData(() => api.getCashOutflowDashboard(month, year), [month, year]);
+
+  const BarRow = ({ item }) => (
+    <div className="mb-3">
+      <div className="flex justify-between items-center mb-1 text-sm">
+        <span className="font-medium">{item.category}</span>
+        <span className="text-textmuted text-xs">{item.source}</span>
+        <span className="font-bold">{formatRupiah(item.amount)}</span>
+      </div>
+      <div className="w-full bg-surface2 rounded-full h-2 overflow-hidden">
+        <div className="bg-primary h-full rounded-full" style={{ width: `${Math.min(item.pct, 100)}%` }} />
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      {loading ? (
+        <p className="text-center py-10 text-textmuted">Memuat dashboard uang keluar...</p>
+      ) : report ? (
+        <>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-surface2 p-4 rounded-card border-l-4 border-danger">
+              <p className="text-xs text-textmuted uppercase mb-1">Total Uang Keluar</p>
+              <p className="text-xl font-bold text-danger">{formatRupiah(report.total_outflow)}</p>
+            </div>
+            <div className="bg-surface2 p-4 rounded-card border-l-4 border-info">
+              <p className="text-xs text-textmuted uppercase mb-1">COGS (Stock In Produk)</p>
+              <p className="text-xl font-bold text-info">{formatRupiah(report.cogs)}</p>
+            </div>
+            <div className="bg-surface2 p-4 rounded-card border-l-4 border-warning">
+              <p className="text-xs text-textmuted uppercase mb-1">OPEX Variabel (Termasuk Biaya Lainnya)</p>
+              <p className="text-xl font-bold text-warning">{formatRupiah(report.opex_var)}</p>
+            </div>
+          </div>
+
+          <Card title="🔍 Kemana Uang Paling Banyak Keluar?">
+            {report.combined_breakdown.length === 0 ? (
+              <p className="text-textmuted text-sm text-center py-6">Belum ada pengeluaran di bulan ini</p>
+            ) : (
+              report.combined_breakdown.map((item, i) => <BarRow key={i} item={item} />)
+            )}
+          </Card>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <Card title="📦 Pengeluaran Produk per Kategori (Stock In)">
+              <Table
+                columns={[
+                  { key: 'category', label: 'Kategori' },
+                  { key: 'amount', label: 'Total', render: (r) => formatRupiah(r.amount) },
+                ]}
+                rows={report.stock_in_breakdown}
+                emptyMessage="Tidak ada Stock In bulan ini"
+              />
+            </Card>
+            <Card title="🧾 Pengeluaran Operasional per Kategori">
+              <Table
+                columns={[
+                  { key: 'category', label: 'Kategori' },
+                  { key: 'amount', label: 'Total', render: (r) => formatRupiah(r.amount) },
+                ]}
+                rows={report.expense_breakdown}
+                emptyMessage="Tidak ada biaya operasional bulan ini"
+              />
+            </Card>
+          </div>
+        </>
+      ) : (
+        <p className="text-center py-10 text-textmuted">Data gagal dimuat.</p>
+      )}
+    </div>
+  );
+}
+
 export default function KeuanganPage() {
   const { month: curMonth, year: curYear } = currentMonthYear();
   const [topTab, setTopTab] = useState('ringkasan');
@@ -60,7 +136,7 @@ export default function KeuanganPage() {
   const [monthPeriod, setMonthPeriod] = useState(`${curYear}-${String(curMonth).padStart(2, '0')}`);
   const [yearPeriod, setYearPeriod] = useState(String(curYear));
 
-  const [otherCostModal, setOtherCostModal] = useState(null); // 'add' | 'manage' | null
+  const [otherCostModal, setOtherCostModal] = useState(null);
   const { data: otherCostItems, refetch: refetchItems } = useData(() => api.listOtherCostItems(), []);
   const { data: otherCostReport, loading: otherCostLoading, refetch: refetchOtherCosts } = useData(
     () => api.getOtherCostsReport(Number(monthPeriod.split('-')[1]), Number(monthPeriod.split('-')[0])),
@@ -109,9 +185,7 @@ export default function KeuanganPage() {
         const dailyOpex = (dailyRev * opexVarRatio) + dailyFixedOpex;
         const dailyNet = dailyGross - dailyOpex - dailyTaxDep;
 
-        return {
-          label: date, revenue: dailyRev, grossProfit: dailyGross, opex: dailyOpex, netProfit: dailyNet
-        };
+        return { label: date, revenue: dailyRev, grossProfit: dailyGross, opex: dailyOpex, netProfit: dailyNet };
       }).reverse();
     }
     return [];
@@ -132,7 +206,11 @@ export default function KeuanganPage() {
           <p className="text-sm text-textmuted">Kalkulasi Laporan Laba Rugi Komprehensif (Income Statement)</p>
         </div>
         <Tabs
-          tabs={[{ value: 'ringkasan', label: 'Ringkasan' }, { value: 'lainnya', label: 'Biaya Lainnya' }]}
+          tabs={[
+            { value: 'ringkasan', label: 'Ringkasan' },
+            { value: 'lainnya', label: 'Biaya Lainnya' },
+            { value: 'uangkeluar', label: 'Uang Keluar' },
+          ]}
           active={topTab}
           onChange={setTopTab}
         />
@@ -172,7 +250,7 @@ export default function KeuanganPage() {
                 <Card title={`Buku Besar Income Statement — ${statement.period}`}>
                   <div className="space-y-3 font-medium text-sm">
                     <div className="flex justify-between"><span className="text-textmuted">Pendapatan Kotor (Revenue)</span><span>{formatRupiah(statement.revenue)}</span></div>
-                    <div className="flex justify-between text-danger"><span className="text-textmuted">(-) HPP Bahan Baku (COGS)</span><span>-{formatRupiah(statement.cogs)}</span></div>
+                    <div className="flex justify-between text-danger"><span className="text-textmuted">(-) COGS (Realisasi Stock In)</span><span>-{formatRupiah(statement.cogs)}</span></div>
                     <div className="flex justify-between border-t border-white/[0.1] pt-2 font-bold text-info"><span>Laba Kotor (Gross Profit)</span><span>{formatRupiah(statement.gross_profit)}</span></div>
 
                     <div className="flex justify-between text-danger mt-4"><span className="text-textmuted">(-) OPEX Variabel (Pengeluaran Kas)</span><span>-{formatRupiah(statement.opex_var)}</span></div>
@@ -182,6 +260,7 @@ export default function KeuanganPage() {
                     <div className="flex justify-between text-danger mt-4"><span className="text-textmuted">(-) Pajak & Depresiasi</span><span>-{formatRupiah(statement.depreciation)}</span></div>
                     <div className="flex justify-between border-t border-white/[0.2] pt-2 font-black text-success text-lg"><span>Laba Bersih (Net Profit / NPM)</span><span>{formatRupiah(statement.net_profit)}</span></div>
                   </div>
+                  <p className="text-[10px] text-textmuted mt-3 italic">*COGS versi HPP dari penjualan (metrik pembanding): {formatRupiah(statement.cogs_from_sales)} — lihat detail di tab Penjualan &gt; Dashboard Produk</p>
                 </Card>
 
                 <div className="space-y-6">
@@ -274,6 +353,17 @@ export default function KeuanganPage() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {topTab === 'uangkeluar' && (
+        <div className="space-y-6">
+          <div className="flex justify-end">
+            <div className="w-40">
+              <Select options={monthOptions()} value={monthPeriod} onChange={(e) => setMonthPeriod(e.target.value)} />
+            </div>
+          </div>
+          <CashOutflowDashboard monthPeriod={monthPeriod} />
         </div>
       )}
 
