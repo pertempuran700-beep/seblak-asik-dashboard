@@ -13,6 +13,8 @@ import Tabs from '@/components/ui/Tabs';
 import StockInForm from '@/components/forms/StockInForm';
 import ProductForm from '@/components/forms/ProductForm';
 import WasteProductForm from '@/components/forms/WasteProductForm';
+import OtherCostExpenseForm from '@/components/forms/OtherCostExpenseForm';
+import ManageOtherCostItemsForm from '@/components/forms/ManageOtherCostItemsForm';
 import { formatRupiah, currentMonthYear } from '@/lib/utils';
 
 function monthOptions() {
@@ -164,7 +166,7 @@ function StockMovementLog() {
                 { key: 'product_id', label: 'ID Produk' },
                 { key: 'product_name', label: 'Nama Produk' },
                 { key: 'type', label: 'Tipe', render: (r) => <Badge variant={r.type === 'Masuk' ? 'success' : 'danger'}>{r.type}</Badge> },
-                { key: 'quantity', label: 'Jumlah', render: (r) => (r.type === 'Masuk' ? '+' : '-') + r.quantity },
+                { key: 'quantity', label: 'Jumlah', render: (r) => r.quantity != null ? (r.type === 'Masuk' ? '+' : '-') + r.quantity : '-' },
                 { key: 'keterangan', label: 'Keterangan' },
               ]}
               rows={report?.records || []}
@@ -182,6 +184,7 @@ export default function StokPage() {
   const canEdit = user?.role === 'owner' || user?.role === 'admin';
   const { data: stock, loading, refetch } = useData(() => api.getStockLevels(), []);
   const { data: vendors } = useData(() => (canEdit ? api.listVendors() : Promise.resolve([])), [canEdit]);
+  const { data: otherCostItems, refetch: refetchOtherCostItems } = useData(() => api.listOtherCostItems(), []);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [tab, setTab] = useState('stok');
@@ -231,6 +234,8 @@ export default function StokPage() {
           {canEdit && (
             <>
               <Button variant="secondary" onClick={() => { setEditingProduct(null); setModal('product'); }}>+ Tambah Produk</Button>
+              <Button variant="secondary" onClick={() => setModal('managecost')}>⚙️ Kelola Biaya</Button>
+              <Button variant="secondary" onClick={() => setModal('othercost')}>+ Biaya Lainnya</Button>
               <Button onClick={() => setModal('in')}>📥 + Stok Masuk</Button>
             </>
           )}
@@ -299,6 +304,14 @@ export default function StokPage() {
 
       <Modal open={modal === 'waste'} onClose={() => setModal(null)} title="♻️ Catat Waste Produk">
         <WasteProductForm products={stock || []} onSuccess={refetch} onClose={() => setModal(null)} />
+      </Modal>
+
+      <Modal open={modal === 'othercost'} onClose={() => setModal(null)} title="💸 Catat Biaya Lainnya">
+        <OtherCostExpenseForm items={otherCostItems} onSuccess={refetchOtherCostItems} onClose={() => setModal(null)} />
+      </Modal>
+
+      <Modal open={modal === 'managecost'} onClose={() => setModal(null)} title="⚙️ Kelola Item Biaya Lainnya">
+        <ManageOtherCostItemsForm items={otherCostItems} onSuccess={refetchOtherCostItems} />
       </Modal>
     </div>
   );
