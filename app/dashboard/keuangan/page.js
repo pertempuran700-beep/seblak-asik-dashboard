@@ -4,15 +4,10 @@ import { useData } from '@/hooks/useData';
 import { api } from '@/lib/api';
 import Card from '@/components/ui/Card';
 import Table from '@/components/ui/Table';
-import Badge from '@/components/ui/Badge';
-import Button from '@/components/ui/Button';
 import Tabs from '@/components/ui/Tabs';
-import Modal from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Input';
 import { formatRupiah, currentMonthYear, formatTanggalPendek } from '@/lib/utils';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
-import OtherCostExpenseForm from '@/components/forms/OtherCostExpenseForm';
-import ManageOtherCostItemsForm from '@/components/forms/ManageOtherCostItemsForm';
 
 function FinanceTrendChart({ data }) {
   return (
@@ -121,11 +116,11 @@ function CashOutflowDashboard({ monthPeriod }) {
               <p className="text-xl font-bold text-danger">{formatRupiah(report.total_outflow)}</p>
             </div>
             <div className="bg-surface2 p-4 rounded-card border-l-4 border-info">
-              <p className="text-xs text-textmuted uppercase mb-1">COGS (Stock In Produk)</p>
+              <p className="text-xs text-textmuted uppercase mb-1">COGS (Stock In + Bumbu)</p>
               <p className="text-xl font-bold text-info">{formatRupiah(report.cogs)}</p>
             </div>
             <div className="bg-surface2 p-4 rounded-card border-l-4 border-warning">
-              <p className="text-xs text-textmuted uppercase mb-1">OPEX Variabel (Termasuk Biaya Lainnya)</p>
+              <p className="text-xs text-textmuted uppercase mb-1">OPEX Variabel (Biaya Lainnya)</p>
               <p className="text-xl font-bold text-warning">{formatRupiah(report.opex_var)}</p>
             </div>
           </div>
@@ -139,13 +134,13 @@ function CashOutflowDashboard({ monthPeriod }) {
           </Card>
 
           <div className="grid md:grid-cols-2 gap-4">
-            <CategoryBreakdownCard title="📦 Pengeluaran Produk per Kategori (Stock In)" rows={report.stock_in_breakdown} />
+            <CategoryBreakdownCard title="📦 Pengeluaran Produk per Kategori (Stock In + Bumbu)" rows={report.stock_in_breakdown} />
             <CategoryBreakdownCard title="🧾 Pengeluaran Operasional per Kategori" rows={report.expense_breakdown} />
           </div>
 
           <Card title="⚖️ Head-to-Head: COGS Laporan Produk vs COGS Stock In">
             <p className="text-xs text-textmuted mb-3">
-              Membandingkan biaya bahan baku yang seharusnya (dari HPP penjualan di Laporan Produk) dengan realisasi uang yang benar-benar dikeluarkan (dari Stock In), per kategori.
+              Membandingkan biaya bahan baku yang seharusnya (dari HPP penjualan) dengan realisasi uang yang dikeluarkan (Stock In + Bumbu), per kategori.
             </p>
             <Table
               columns={[
@@ -180,6 +175,52 @@ function CashOutflowDashboard({ monthPeriod }) {
   );
 }
 
+function OtherCostsDashboard({ monthPeriod }) {
+  const [year, month] = monthPeriod.split('-').map(Number);
+  const { data: otherCostReport, loading } = useData(() => api.getOtherCostsReport(month, year), [month, year]);
+
+  return (
+    <div className="space-y-6">
+      {loading ? (
+        <p className="text-center py-10 text-textmuted">Memuat data biaya lainnya...</p>
+      ) : (
+        <>
+          <div className="bg-surface2 p-4 rounded-card border-l-4 border-warning">
+            <p className="text-xs text-textmuted uppercase mb-1">Total Biaya Lainnya Bulan Ini</p>
+            <p className="text-2xl font-bold text-warning">{formatRupiah(otherCostReport?.total || 0)}</p>
+            <p className="text-[10px] text-textmuted mt-1 italic">*Hanya kategori "Lain-lain". Kategori "Bumbu" masuk ke COGS, lihat di tab Uang Keluar.</p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <Card title="📂 Breakdown per Item">
+              <Table
+                columns={[
+                  { key: 'item', label: 'Item' },
+                  { key: 'total', label: 'Total', render: (r) => formatRupiah(r.total) },
+                ]}
+                rows={otherCostReport?.breakdown || []}
+                emptyMessage="Belum ada biaya lainnya bulan ini"
+              />
+            </Card>
+            <Card title="📋 Riwayat Pencatatan">
+              <Table
+                columns={[
+                  { key: 'date', label: 'Tanggal', render: (r) => new Date(r.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) },
+                  { key: 'description', label: 'Item' },
+                  { key: 'amount', label: 'Nominal', render: (r) => formatRupiah(r.amount) },
+                  { key: 'recorded_by', label: 'Dicatat Oleh' },
+                ]}
+                rows={otherCostReport?.records || []}
+                emptyMessage="Belum ada catatan"
+              />
+            </Card>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function KeuanganPage() {
   const { month: curMonth, year: curYear } = currentMonthYear();
   const [topTab, setTopTab] = useState('ringkasan');
@@ -187,13 +228,6 @@ export default function KeuanganPage() {
 
   const [monthPeriod, setMonthPeriod] = useState(`${curYear}-${String(curMonth).padStart(2, '0')}`);
   const [yearPeriod, setYearPeriod] = useState(String(curYear));
-
-  const [otherCostModal, setOtherCostModal] = useState(null);
-  const { data: otherCostItems, refetch: refetchItems } = useData(() => api.listOtherCostItems(), []);
-  const { data: otherCostReport, loading: otherCostLoading, refetch: refetchOtherCosts } = useData(
-    () => api.getOtherCostsReport(Number(monthPeriod.split('-')[1]), Number(monthPeriod.split('-')[0])),
-    [monthPeriod]
-  );
 
   const targetYear = tabView === 'bulanan' ? Number(monthPeriod.split('-')[0]) : Number(yearPeriod);
   const targetMonth = tabView === 'bulanan' ? Number(monthPeriod.split('-')[1]) : null;
@@ -302,7 +336,7 @@ export default function KeuanganPage() {
                 <Card title={`Buku Besar Income Statement — ${statement.period}`}>
                   <div className="space-y-3 font-medium text-sm">
                     <div className="flex justify-between"><span className="text-textmuted">Pendapatan Kotor (Revenue)</span><span>{formatRupiah(statement.revenue)}</span></div>
-                    <div className="flex justify-between text-danger"><span className="text-textmuted">(-) COGS (Realisasi Stock In)</span><span>-{formatRupiah(statement.cogs)}</span></div>
+                    <div className="flex justify-between text-danger"><span className="text-textmuted">(-) COGS (Stock In + Bumbu)</span><span>-{formatRupiah(statement.cogs)}</span></div>
                     <div className="flex justify-between border-t border-white/[0.1] pt-2 font-bold text-info"><span>Laba Kotor (Gross Profit)</span><span>{formatRupiah(statement.gross_profit)}</span></div>
 
                     <div className="flex justify-between text-danger mt-4"><span className="text-textmuted">(-) OPEX Variabel (Pengeluaran Kas)</span><span>-{formatRupiah(statement.opex_var)}</span></div>
@@ -324,7 +358,7 @@ export default function KeuanganPage() {
                           { key: 'category', label: 'Kategori' },
                           { key: 'amount', label: 'Nominal', render: (r) => <span className="font-bold text-danger">{formatRupiah(r.amount)}</span> },
                         ]}
-                        rows={(expensesRaw || []).slice(0, 7)}
+                        rows={(expensesRaw || []).filter(e => e.category !== 'Bumbu').slice(0, 7)}
                         emptyMessage="Tidak ada pengeluaran kas di bulan ini"
                       />
                     ) : (
@@ -360,51 +394,12 @@ export default function KeuanganPage() {
 
       {topTab === 'lainnya' && (
         <div className="space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex justify-end">
             <div className="w-40">
               <Select options={monthOptions()} value={monthPeriod} onChange={(e) => setMonthPeriod(e.target.value)} />
             </div>
-            <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => setOtherCostModal('manage')}>⚙️ Kelola Item</Button>
-              <Button onClick={() => setOtherCostModal('add')}>+ Catat Biaya</Button>
-            </div>
           </div>
-
-          {otherCostLoading ? (
-            <p className="text-center py-10 text-textmuted">Memuat data biaya lainnya...</p>
-          ) : (
-            <>
-              <div className="bg-surface2 p-4 rounded-card border-l-4 border-warning">
-                <p className="text-xs text-textmuted uppercase mb-1">Total Biaya Lainnya Bulan Ini</p>
-                <p className="text-2xl font-bold text-warning">{formatRupiah(otherCostReport?.total || 0)}</p>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                <Card title="📂 Breakdown per Item">
-                  <Table
-                    columns={[
-                      { key: 'item', label: 'Item' },
-                      { key: 'total', label: 'Total', render: (r) => formatRupiah(r.total) },
-                    ]}
-                    rows={otherCostReport?.breakdown || []}
-                    emptyMessage="Belum ada biaya lainnya bulan ini"
-                  />
-                </Card>
-                <Card title="📋 Riwayat Pencatatan">
-                  <Table
-                    columns={[
-                      { key: 'date', label: 'Tanggal', render: (r) => new Date(r.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) },
-                      { key: 'description', label: 'Item' },
-                      { key: 'amount', label: 'Nominal', render: (r) => formatRupiah(r.amount) },
-                      { key: 'recorded_by', label: 'Dicatat Oleh' },
-                    ]}
-                    rows={otherCostReport?.records || []}
-                    emptyMessage="Belum ada catatan"
-                  />
-                </Card>
-              </div>
-            </>
-          )}
+          <OtherCostsDashboard monthPeriod={monthPeriod} />
         </div>
       )}
 
@@ -418,14 +413,6 @@ export default function KeuanganPage() {
           <CashOutflowDashboard monthPeriod={monthPeriod} />
         </div>
       )}
-
-      <Modal open={otherCostModal === 'add'} onClose={() => setOtherCostModal(null)} title="💸 Catat Biaya Lainnya">
-        <OtherCostExpenseForm items={otherCostItems} onSuccess={refetchOtherCosts} onClose={() => setOtherCostModal(null)} />
-      </Modal>
-
-      <Modal open={otherCostModal === 'manage'} onClose={() => setOtherCostModal(null)} title="⚙️ Kelola Item Biaya Lainnya">
-        <ManageOtherCostItemsForm items={otherCostItems} onSuccess={refetchItems} />
-      </Modal>
     </div>
   );
 }
