@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import Card from '@/components/ui/Card';
 import { formatRupiah, formatTanggalPendek } from '@/lib/utils';
 import SalesLineChart from '@/components/charts/SalesLineChart';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function OverviewDashboard() {
   const [period, setPeriod] = useState('7');
@@ -19,6 +20,8 @@ export default function OverviewDashboard() {
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+    const { user } = useAuth();
+  const isOwner = user?.role === 'owner';
   };
 
   const dateRangeStr = useMemo(() => {
@@ -195,7 +198,7 @@ export default function OverviewDashboard() {
       </div>
 
       {/* METRIK KEUANGAN REAL-TIME DENGAN TARGET */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${isOwner ? 'lg:grid-cols-4' : 'lg:grid-cols-2'} gap-4`}>
         <FinancialCard 
            label="💰 REVENUE (Omzet Bersih)" 
            amount={formatRupiah(revenue)} 
@@ -214,24 +217,28 @@ export default function OverviewDashboard() {
            pctLabel="Margin Kotor Riil" 
            colorClass="text-info" 
         />
-        <FinancialCard 
-           label="☕ EBITDA (Laba Operasional)" 
-           amount={formatRupiah(ebitda)} 
-           targetAmount={targetEbitdaProrated}
-           isPercentTarget={false}
-           pct={targetEbitdaProrated > 0 ? Math.min((ebitda / targetEbitdaProrated) * 100, 100) : 0} 
-           pctLabel="Pencapaian Target" 
-           colorClass="text-warning" 
-        />
-        <FinancialCard 
-           label="💵 NPM (Laba Bersih)" 
-           amount={formatRupiah(netProfit)} 
-           targetAmount={targetNPM}
-           isPercentTarget={true}
-           pct={npm} 
-           pctLabel="Margin Bersih Riil" 
-           colorClass="text-success" 
-        />
+        {isOwner && (
+          <>
+            <FinancialCard 
+               label="☕ EBITDA (Laba Operasional)" 
+               amount={formatRupiah(ebitda)} 
+               targetAmount={targetEbitdaProrated}
+               isPercentTarget={false}
+               pct={targetEbitdaProrated > 0 ? Math.min((ebitda / targetEbitdaProrated) * 100, 100) : 0} 
+               pctLabel="Pencapaian Target" 
+               colorClass="text-warning" 
+            />
+            <FinancialCard 
+               label="💵 NPM (Laba Bersih)" 
+               amount={formatRupiah(netProfit)} 
+               targetAmount={targetNPM}
+               isPercentTarget={true}
+               pct={npm} 
+               pctLabel="Margin Bersih Riil" 
+               colorClass="text-success" 
+            />
+          </>
+        )}
       </div>
 
       <div className="bg-surface2 border border-border/50 rounded-card p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-inner">
