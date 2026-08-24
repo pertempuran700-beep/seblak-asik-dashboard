@@ -29,10 +29,10 @@ export default function StockInForm({ products, vendors, onSuccess, onClose }) {
     dueDate: '',
     invoiceNo: '',
   });
+  const [txDate, setTxDate] = useState(new Date().toISOString().slice(0, 10));
   const [submitting, setSubmitting] = useState(false);
   const toast = useToast();
 
-  // Saat kategori berubah, reset produk terpilih ke produk pertama di kategori itu
   useEffect(() => {
     setForm((prev) => ({ ...prev, productId: filteredProducts[0]?.product_id || '' }));
   }, [category]);
@@ -70,7 +70,7 @@ export default function StockInForm({ products, vendors, onSuccess, onClose }) {
     try {
       const result = await api.addStockIn(
         finalProductId, form.vendorId, Number(form.qtyBeli), Number(form.hargaBeli),
-        form.paymentStatus, form.dueDate || null, form.invoiceNo
+        form.paymentStatus, form.dueDate || null, form.invoiceNo, txDate
       );
       toast?.showToast(`Stok masuk dicatat: +${result.quantity_converted} ${selectedProduct?.sell_unit || 'unit'}`);
       onSuccess?.();
@@ -84,6 +84,14 @@ export default function StockInForm({ products, vendors, onSuccess, onClose }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      <Input
+        label="Tanggal Transaksi"
+        type="date"
+        required
+        value={txDate}
+        onChange={(e) => setTxDate(e.target.value)}
+      />
+
       <div className="bg-surface2 p-3 rounded-card border border-white/[0.08] mb-2">
         <Input
           label="Ketik / Scan Kode Produk"
