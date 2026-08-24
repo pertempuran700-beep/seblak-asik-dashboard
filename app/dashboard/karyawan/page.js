@@ -12,7 +12,7 @@ import Tabs from '@/components/ui/Tabs';
 import { Input, Select } from '@/components/ui/Input';
 import EmployeeForm from '@/components/forms/EmployeeForm';
 import PerformanceReviewForm from '@/components/forms/PerformanceReviewForm';
-import PayslipCard from '@/components/cards/PayslipCard';
+import PayslipCard from '@/components/PayslipCard';
 import { formatRupiah, currentMonthYear, formatTanggalPendek } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 
