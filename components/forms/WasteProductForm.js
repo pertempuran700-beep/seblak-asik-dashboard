@@ -22,7 +22,12 @@ export default function WasteProductForm({ products, onSuccess, onClose }) {
     if (!category) return [];
     return (products || []).filter((p) => p.category === category);
   }, [products, category]);
-
+  
+  const [txDate, setTxDate] = useState(new Date().toISOString().slice(0, 10));
+  // ... di dalam form, sebelum tombol submit:
+  <Input label="Tanggal Transaksi" type="date" required value={txDate} onChange={(e) => setTxDate(e.target.value)} />
+  // ... di handleSubmit:
+  await api.addWasteProduct(productId, qtyNum, notes, txDate);
   const selectedProduct = filteredProducts.find((p) => p.product_id === productId);
 
   async function handleSubmit(e) {
