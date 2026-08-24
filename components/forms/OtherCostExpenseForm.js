@@ -9,6 +9,7 @@ export default function OtherCostExpenseForm({ items, onSuccess, onClose }) {
   const [itemId, setItemId] = useState('');
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
+  const [txDate, setTxDate] = useState(new Date().toISOString().slice(0, 10));
   const [submitting, setSubmitting] = useState(false);
   const toast = useToast();
 
@@ -19,7 +20,7 @@ export default function OtherCostExpenseForm({ items, onSuccess, onClose }) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await api.createOtherCostExpense(itemId, Number(amount), notes);
+      await api.createOtherCostExpense(itemId, Number(amount), notes, txDate);
       toast?.showToast('Biaya lainnya berhasil dicatat');
       onSuccess?.();
       onClose?.();
@@ -32,6 +33,14 @@ export default function OtherCostExpenseForm({ items, onSuccess, onClose }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
+      <Input
+        label="Tanggal Transaksi"
+        type="date"
+        required
+        value={txDate}
+        onChange={(e) => setTxDate(e.target.value)}
+      />
+
       <Select
         label="Pilih Item"
         required
