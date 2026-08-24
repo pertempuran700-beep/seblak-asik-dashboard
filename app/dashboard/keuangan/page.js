@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/Input';
 import { formatRupiah, currentMonthYear, formatTanggalPendek } from '@/lib/utils';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { useAuth } from '@/hooks/useAuth';
+import MarketingCostForm from '@/components/forms/MarketingCostForm';
 
 function FinanceTrendChart({ data }) {
   return (
@@ -223,6 +224,64 @@ function OtherCostsDashboard({ monthPeriod }) {
 }
 
 export default function KeuanganPage() {
+  function MarketingDashboard({ monthPeriod }) {
+  const [year, month] = monthPeriod.split('-').map(Number);
+  const [modal, setModal] = useState(false);
+  const { data: report, loading, refetch } = useData(() => api.getMarketingDashboard(month, year), [month, year]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button onClick={() => setModal(true)}>+ Input Biaya Marketing</Button>
+      </div>
+
+      {loading ? (
+        <p className="text-center py-10 text-textmuted">Memuat data marketing...</p>
+      ) : report ? (
+        <>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-surface2 p-4 rounded-card border-l-4 border-warning">
+              <p className="text-xs text-textmuted uppercase mb-1">Biaya Marketing</p>
+              <p className="text-xl font-bold text-warning">{formatRupiah(report.spend)}</p>
+            </div>
+            <div className="bg-surface2 p-4 rounded-card border-l-4 border-info">
+              <p className="text-xs text-textmuted uppercase mb-1">Revenue Bulan Ini</p>
+              <p className="text-xl font-bold text-info">{formatRupiah(report.revenue)}</p>
+            </div>
+            <div className="bg-surface2 p-4 rounded-card border-l-4 border-success">
+              <p className="text-xs text-textmuted uppercase mb-1">ROI (Revenue / Marketing)</p>
+              <p className="text-xl font-bold text-success">{report.roi.toFixed(1)}x</p>
+            </div>
+          </div>
+
+          <Card title="📈 Tren 12 Bulan Terakhir">
+            <FinanceTrendChart data={report.history.map(h => ({ label: h.label, revenue: h.revenue, grossProfit: h.spend, opex: 0, netProfit: 0 }))} />
+            <p className="text-[10px] text-textmuted mt-2">*Garis abu = Revenue, garis biru = Biaya Marketing (garis lain diabaikan di grafik ini)</p>
+          </Card>
+
+          <Card title="📋 Histori Biaya Marketing">
+            <Table
+              columns={[
+                { key: 'label', label: 'Bulan' },
+                { key: 'spend', label: 'Biaya Marketing', render: (r) => formatRupiah(r.spend) },
+                { key: 'revenue', label: 'Revenue', render: (r) => formatRupiah(r.revenue) },
+                { key: 'roi', label: 'ROI', render: (r) => r.spend > 0 ? r.roi.toFixed(1) + 'x' : '-' },
+              ]}
+              rows={report.history}
+              emptyMessage="Belum ada data"
+            />
+          </Card>
+        </>
+      ) : (
+        <p className="text-center py-10 text-textmuted">Data gagal dimuat.</p>
+      )}
+
+      <Modal open={modal} onClose={() => setModal(false)} title="📢 Input Biaya Marketing">
+        <MarketingCostForm onSuccess={refetch} onClose={() => setModal(false)} />
+      </Modal>
+    </div>
+  );
+}
   const { user } = useAuth();
   if (user && user.role !== 'owner') {
     return <div className="text-center mt-20 text-textmuted">Akses Ditolak. Halaman ini khusus Owner.</div>;
