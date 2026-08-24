@@ -12,24 +12,21 @@ import Tabs from '@/components/ui/Tabs';
 import { Input, Select } from '@/components/ui/Input';
 import EmployeeForm from '@/components/forms/EmployeeForm';
 import PerformanceReviewForm from '@/components/forms/PerformanceReviewForm';
+import PayslipCard from '@/components/cards/PayslipCard';
 import { formatRupiah, currentMonthYear, formatTanggalPendek } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 
-// -----------------------------------------------------
-// KOMPONEN FORM MODAL JADWAL KARYAWAN (Mode Tambah & Edit)
-// -----------------------------------------------------
 function ScheduleModal({ date, settings, employees, editData, onClose, onSuccess }) {
   const toast = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  
+
   const dayIndex = new Date(date).getDay();
   const isWeekend = dayIndex === 0 || dayIndex === 5 || dayIndex === 6;
-  
+
   const defaultIn = isWeekend ? (settings?.shift_weekend_in || '10:00') : (settings?.shift_weekday_in || '09:00');
   const defaultOut = isWeekend ? (settings?.shift_weekend_out || '21:30') : (settings?.shift_weekday_out || '20:30');
 
-  // Jika editData ada, gunakan datanya. Jika tidak, gunakan nilai default.
   const [form, setForm] = useState({
     schedule_id: editData?.schedule_id || '',
     employeeId: editData?.employee_id || '',
@@ -43,7 +40,7 @@ function ScheduleModal({ date, settings, employees, editData, onClose, onSuccess
     setSubmitting(true);
     try {
       await api.saveDailySchedule({
-        schedule_id: form.schedule_id, // Kirim ID lama (jika ada) untuk diedit
+        schedule_id: form.schedule_id,
         employeeId: form.employeeId,
         date: date,
         startTime: form.startTime,
@@ -81,11 +78,11 @@ function ScheduleModal({ date, settings, employees, editData, onClose, onSuccess
         <p className="text-lg font-bold text-white">{new Date(date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
       </div>
 
-      <Select 
+      <Select
         label="Pilih Karyawan" required value={form.employeeId} onChange={(e) => setForm({...form, employeeId: e.target.value})}
         options={[{value: '', label: '-- Input Karyawan --'}, ...(employees || []).filter(e => e.status === 'Active').map(e => ({ value: e.employee_id, label: e.full_name }))]}
       />
-      
+
       <div className="grid grid-cols-2 gap-3">
         <Input label="Jam Masuk" type="time" required value={form.startTime} onChange={(e) => setForm({...form, startTime: e.target.value})} />
         <Input label="Jam Keluar" type="time" required value={form.endTime} onChange={(e) => setForm({...form, endTime: e.target.value})} />
@@ -107,23 +104,57 @@ function ScheduleModal({ date, settings, employees, editData, onClose, onSuccess
   );
 }
 
-// -----------------------------------------------------
-// HALAMAN UTAMA KARYAWAN
-// -----------------------------------------------------
+function PerformanceGauge({ row }) {
+  const color = !row.is_reviewed ? 'text-textmuted' : row.score >= 90 ? 'text-success' : row.score >= 75 ? 'text-warning' : 'text-danger';
+  const ring = !row.is_reviewed ? 'border-white/[0.1]' : row.score >= 90 ? 'border-success' : row.score >= 75 ? 'border-warning' : 'border-danger';
+
+  return (
+    <div className="max-w-sm mx-auto space-y-6">
+      <div className={`w-40 h-40 mx-auto rounded-full border-8 ${ring} flex flex-col items-center justify-center bg-surface2`}>
+        <p className={`text-4xl font-black ${color}`}>{row.is_reviewed ? row.score : '—'}</p>
+        <p className="text-[10px] text-textmuted uppercase tracking-wider">{row.is_reviewed ? '/ 100' : 'Belum Dinilai'}</p>
+      </div>
+      <div className="text-center">
+        <Badge variant={row.evaluation === 'Excellent' ? 'success' : row.evaluation === 'Good' ? 'warning' : 'neutral'}>{row.evaluation}</Badge>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-surface2 rounded-card p-4 text-center">
+          <p className="text-2xl font-bold text-warning">{row.late_count}</p>
+          <p className="text-[10px] text-textmuted uppercase">Kali Telat</p>
+        </div>
+        <div className="bg-surface2 rounded-card p-4 text-center">
+          <p className="text-2xl font-bold text-danger">{row.alpha_count}</p>
+          <p className="text-[10px] text-textmuted uppercase">Kali Alpha</p>
+        </div>
+      </div>
+      {row.is_reviewed && row.details && (
+        <Card title="Detail Penilaian">
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-textmuted">Pelayanan</span><span className="font-bold">{row.details.hospitality}</span></div>
+            <div className="flex justify-between"><span className="text-textmuted">Skill Produk</span><span className="font-bold">{row.details.product_knowledge}</span></div>
+            <div className="flex justify-between"><span className="text-textmuted">Kebersihan</span><span className="font-bold">{row.details.hygiene}</span></div>
+            <div className="flex justify-between"><span className="text-textmuted">Kedisiplinan</span><span className="font-bold">{row.details.discipline}</span></div>
+            <div className="flex justify-between"><span className="text-textmuted">Kerjasama Tim</span><span className="font-bold">{row.details.teamwork}</span></div>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 export default function KaryawanPage() {
   const { user } = useAuth();
   const isOwner = user?.role === 'owner';
   const isAdmin = user?.role === 'owner' || user?.role === 'admin' || user?.role === 'supervisor';
-  
+
   const { month, year } = currentMonthYear();
   const [period, setPeriod] = useState(`${year}-${String(month).padStart(2, '0')}`);
-  const [tab, setTab] = useState('list');
-  
+  const [tab, setTab] = useState(isOwner ? 'list' : 'schedule');
+
   const [modal, setModal] = useState(null);
   const [editing, setEditing] = useState(null);
   const [evaluating, setEvaluating] = useState(null);
-  
-  // State Khusus Kalender Jadwal (Ditambahkan state Edit)
+
   const [selectedDate, setSelectedDate] = useState(null);
   const [editData, setEditData] = useState(null);
 
@@ -131,11 +162,23 @@ export default function KaryawanPage() {
 
   const { data: employees, loading, refetch } = useData(() => api.listEmployees(), []);
   const { data: settings } = useData(() => api.getSystemSettings(), []);
-  const { data: payroll, loading: payrollLoading, refetch: refetchPayroll } = useData(() => api.generatePayroll(Number(period.split('-')[1]), Number(period.split('-')[0])), [period]);
+
+  // 🔥 Owner/Admin: generatePayroll (massal, tabel semua orang). Employee: getPayslip (cuma milik sendiri).
+  const { data: payroll, loading: payrollLoading, refetch: refetchPayroll } = useData(
+    () => isOwner || user?.role === 'admin'
+      ? api.generatePayroll(Number(period.split('-')[1]), Number(period.split('-')[0]))
+      : Promise.resolve(null),
+    [period, isOwner, user]
+  );
+  const { data: mySlip, loading: mySlipLoading, refetch: refetchMySlip } = useData(
+    () => (!isOwner && user?.role !== 'admin' && user?.employee_id)
+      ? api.getPayslip(user.employee_id, Number(period.split('-')[1]), Number(period.split('-')[0]))
+      : Promise.resolve(null),
+    [period, user]
+  );
+
   const { data: performance, loading: performanceLoading, refetch: refetchPerf } = useData(() => api.getPerformanceSummary(period), [period]);
   const { data: bonusLog, loading: bonusLoading } = useData(() => api.getDailyBonusLog(period), [period]);
-  
-  // Data Jadwal Bulanan
   const { data: monthlySchedule, refetch: refetchSchedule } = useData(() => api.getMonthlySchedule(period), [period]);
 
   const filterOwnData = (arr) => {
@@ -143,14 +186,13 @@ export default function KaryawanPage() {
     return (arr || []).filter(r => r.employee_id === user?.employee_id || r.employee_name?.includes(user?.full_name));
   };
 
-  // Logika Pembuatan Grid Kalender
   const calendarDays = useMemo(() => {
     const [y, m] = period.split('-');
     const firstDay = new Date(y, Number(m) - 1, 1).getDay();
     const daysInMonth = new Date(y, Number(m), 0).getDate();
-    
+
     const days = [];
-    for (let i = 0; i < firstDay; i++) days.push(null); // Kotak kosong awal bulan
+    for (let i = 0; i < firstDay; i++) days.push(null);
     for (let i = 1; i <= daysInMonth; i++) {
       const dateStr = `${y}-${m}-${String(i).padStart(2, '0')}`;
       days.push({ dayNumber: i, dateString: dateStr });
@@ -171,7 +213,7 @@ export default function KaryawanPage() {
     { key: 'employee_name', label: 'Nama Karyawan' },
     { key: 'score', label: 'Skor Kinerja', render: (r) => r.is_reviewed ? (
         <span className={`font-bold text-lg ${r.score >= 90 ? 'text-success' : r.score >= 75 ? 'text-warning' : 'text-danger'}`}>{r.score} / 100</span>
-      ) : <span className="text-textmuted italic">Belum Dinilai</span> 
+      ) : <span className="text-textmuted italic">Belum Dinilai</span>
     },
     { key: 'evaluation', label: 'Predikat', render: (r) => <Badge variant={r.evaluation === 'Excellent' ? 'success' : r.evaluation === 'Good' ? 'warning' : 'neutral'}>{r.evaluation}</Badge> },
     isOwner && { key: 'actions', label: '', render: (r) => (
@@ -203,6 +245,16 @@ export default function KaryawanPage() {
     { key: 'total_bonus', label: 'Total Bonus Dibagikan', render: (r) => formatRupiah(r.total_bonus) },
   ];
 
+  const availableTabs = [
+    isOwner && { value: 'list', label: 'Data Karyawan' },
+    { value: 'schedule', label: 'Jadwal Karyawan' },
+    { value: 'performance', label: 'Penilaian Kinerja' },
+    { value: 'payroll', label: 'Slip Gaji (Payroll)' },
+    { value: 'bonus', label: 'Log Bonus Harian' },
+  ].filter(Boolean);
+
+  const myPerformanceRow = performance ? filterOwnData(performance)[0] : null;
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -218,50 +270,40 @@ export default function KaryawanPage() {
         </div>
       </div>
 
-      <Tabs
-        tabs={[
-          { value: 'list', label: 'Data Karyawan' },
-          { value: 'schedule', label: 'Jadwal Karyawan' },
-          { value: 'performance', label: 'Penilaian Kinerja' },
-          { value: 'payroll', label: 'Slip Gaji (Payroll)' },
-          { value: 'bonus', label: 'Log Bonus Harian' },
-        ]}
-        active={tab} onChange={setTab}
-      />
+      <Tabs tabs={availableTabs} active={tab} onChange={setTab} />
 
-      {tab === 'list' && (
-        <Card>{loading ? <p className="text-center py-8">Memuat...</p> : <Table columns={columns} rows={isAdmin ? employees : filterOwnData(employees)} />}</Card>
+      {tab === 'list' && isOwner && (
+        <Card>{loading ? <p className="text-center py-8">Memuat...</p> : <Table columns={columns} rows={employees} />}</Card>
       )}
 
-      {/* TAMPILAN GOOGLE CALENDAR JADWAL KARYAWAN */}
       {tab === 'schedule' && (
         <Card title={`Kalender Rotasi Kerja — Periode ${period}`}>
           <div className="grid grid-cols-7 gap-1 md:gap-2 text-center text-xs md:text-sm font-bold text-textmuted mb-2">
             <div>Min</div><div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div>
           </div>
-          
+
           <div className="grid grid-cols-7 gap-1 md:gap-2">
             {calendarDays.map((day, idx) => {
               if (!day) return <div key={`empty-${idx}`} className="bg-transparent border border-transparent rounded p-2 h-24"></div>;
-              
+
               const daySchedules = (monthlySchedule || []).filter(s => {
                  const dbDate = s.date.split('/');
                  return `${dbDate[2]}-${dbDate[1]}-${dbDate[0]}` === day.dateString;
               });
 
               return (
-                <div 
-                  key={day.dateString} 
+                <div
+                  key={day.dateString}
                   onClick={() => { if(isAdmin) { setSelectedDate(day.dateString); setEditData(null); setModal('schedule'); } }}
                   className={`bg-surface2 border ${isAdmin ? 'cursor-pointer hover:border-primary/50' : ''} border-white/[0.05] rounded p-1 md:p-2 h-24 md:h-32 overflow-y-auto flex flex-col hide-scrollbar transition-colors`}
                 >
                   <div className="text-right text-xs md:text-sm font-bold text-white mb-1 opacity-70">{day.dayNumber}</div>
                   <div className="space-y-1 flex-1">
                     {daySchedules.map((s, i) => (
-                      <div 
-                        key={i} 
+                      <div
+                        key={i}
                         onClick={(e) => {
-                          e.stopPropagation(); // Mencegah klik background tertular ke sini
+                          e.stopPropagation();
                           if(isAdmin) { setSelectedDate(day.dateString); setEditData(s); setModal('schedule'); }
                         }}
                         className="bg-primary/20 hover:bg-primary/40 text-primary border border-primary/30 text-[9px] md:text-xs rounded px-1 py-0.5 md:py-1 truncate cursor-pointer transition-colors"
@@ -278,20 +320,32 @@ export default function KaryawanPage() {
       )}
 
       {tab === 'performance' && (
-        <Card title={`Review Kinerja - Periode ${period}`}>
-          {performanceLoading ? <p className="text-center py-8">Memuat Data Kinerja...</p> : <Table columns={performanceColumns} rows={filterOwnData(performance)} emptyMessage="Belum ada data karyawan aktif." />}
-        </Card>
+        isOwner ? (
+          <Card title={`Review Kinerja - Periode ${period}`}>
+            {performanceLoading ? <p className="text-center py-8">Memuat Data Kinerja...</p> : <Table columns={performanceColumns} rows={performance} emptyMessage="Belum ada data karyawan aktif." />}
+          </Card>
+        ) : (
+          performanceLoading ? <p className="text-center py-8">Memuat penilaian Anda...</p> :
+          myPerformanceRow ? <PerformanceGauge row={myPerformanceRow} /> :
+          <p className="text-center py-8 text-textmuted">Data penilaian belum tersedia.</p>
+        )
       )}
 
       {tab === 'payroll' && (
-        <Card title={`Kalkulasi Gaji Otomatis - Periode ${period}`}>
-          {payrollLoading ? <p className="text-center py-8">Menghitung payroll (Gaji Pokok + Bonus Harian - Potongan)...</p> : (
-            <>
-              {isOwner && <p className="text-sm text-textmuted mb-4 border-b border-white/[0.05] pb-4">Total Payout Perusahaan Bulan Ini: <span className="font-bold text-primary text-lg">{formatRupiah(payroll?.total_payout || 0)}</span></p>}
-              <Table columns={payrollColumns} rows={filterOwnData(payroll?.records)} />
-            </>
-          )}
-        </Card>
+        isOwner || user?.role === 'admin' ? (
+          <Card title={`Kalkulasi Gaji Otomatis - Periode ${period}`}>
+            {payrollLoading ? <p className="text-center py-8">Menghitung payroll (Gaji Pokok + Bonus Harian - Potongan)...</p> : (
+              <>
+                {isOwner && <p className="text-sm text-textmuted mb-4 border-b border-white/[0.05] pb-4">Total Payout Perusahaan Bulan Ini: <span className="font-bold text-primary text-lg">{formatRupiah(payroll?.total_payout || 0)}</span></p>}
+                <Table columns={payrollColumns} rows={payroll?.records} />
+              </>
+            )}
+          </Card>
+        ) : (
+          mySlipLoading ? <p className="text-center py-8">Memuat slip gaji Anda...</p> :
+          mySlip ? <PayslipCard slip={mySlip} /> :
+          <p className="text-center py-8 text-textmuted">Slip gaji belum tersedia untuk periode ini.</p>
+        )
       )}
 
       {tab === 'bonus' && (
@@ -300,26 +354,23 @@ export default function KaryawanPage() {
         </Card>
       )}
 
-      {/* MODAL KARYAWAN & PENILAIAN */}
       <Modal open={modal === 'employee'} onClose={() => setModal(null)} title={editing ? 'Edit Karyawan' : 'Tambah Karyawan'}>
         <EmployeeForm employee={editing} onSuccess={refetch} onClose={() => setModal(null)} />
       </Modal>
       <Modal open={modal === 'performance'} onClose={() => setModal(null)} title={`Evaluasi Kinerja: ${evaluating?.employee_name}`}>
         <PerformanceReviewForm employee={evaluating} period={period} onSuccess={refetchPerf} onClose={() => setModal(null)} />
       </Modal>
-      
-      {/* MODAL INPUT JADWAL HARIAN */}
+
       <Modal open={modal === 'schedule'} onClose={() => setModal(null)} title="Manajemen Jadwal Harian">
-        <ScheduleModal 
-          date={selectedDate} 
-          settings={settings} 
-          employees={employees} 
+        <ScheduleModal
+          date={selectedDate}
+          settings={settings}
+          employees={employees}
           editData={editData}
-          onSuccess={refetchSchedule} 
-          onClose={() => setModal(null)} 
+          onSuccess={refetchSchedule}
+          onClose={() => setModal(null)}
         />
       </Modal>
-
     </div>
   );
 }
