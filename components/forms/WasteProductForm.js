@@ -10,6 +10,7 @@ export default function WasteProductForm({ products, onSuccess, onClose }) {
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [notes, setNotes] = useState('');
+  const [txDate, setTxDate] = useState(new Date().toISOString().slice(0, 10));
   const [submitting, setSubmitting] = useState(false);
   const toast = useToast();
 
@@ -22,12 +23,7 @@ export default function WasteProductForm({ products, onSuccess, onClose }) {
     if (!category) return [];
     return (products || []).filter((p) => p.category === category);
   }, [products, category]);
-  
-  const [txDate, setTxDate] = useState(new Date().toISOString().slice(0, 10));
-  // ... di dalam form, sebelum tombol submit:
-  <Input label="Tanggal Transaksi" type="date" required value={txDate} onChange={(e) => setTxDate(e.target.value)} />
-  // ... di handleSubmit:
-  await api.addWasteProduct(productId, qtyNum, notes, txDate);
+
   const selectedProduct = filteredProducts.find((p) => p.product_id === productId);
 
   async function handleSubmit(e) {
@@ -39,7 +35,7 @@ export default function WasteProductForm({ products, onSuccess, onClose }) {
     }
     setSubmitting(true);
     try {
-      await api.addWasteProduct(productId, qtyNum, notes);
+      await api.addWasteProduct(productId, qtyNum, notes, txDate);
       toast?.showToast(`Waste tercatat: -${qtyNum} ${selectedProduct?.name || ''}`);
       onSuccess?.();
       onClose?.();
@@ -55,6 +51,14 @@ export default function WasteProductForm({ products, onSuccess, onClose }) {
       <div className="bg-warning/10 border border-warning/20 p-3 rounded-card text-xs text-warning">
         ♻️ Catat produk yang rusak/terbuang di sini. Stok akan otomatis berkurang.
       </div>
+
+      <Input
+        label="Tanggal Transaksi"
+        type="date"
+        required
+        value={txDate}
+        onChange={(e) => setTxDate(e.target.value)}
+      />
 
       <Select
         label="1. Pilih Kategori"
