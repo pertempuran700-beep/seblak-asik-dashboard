@@ -8,6 +8,7 @@ import Tabs from '@/components/ui/Tabs';
 import { Select } from '@/components/ui/Input';
 import { formatRupiah, currentMonthYear, formatTanggalPendek } from '@/lib/utils';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { useAuth } from '@/hooks/useAuth';
 
 function FinanceTrendChart({ data }) {
   return (
@@ -222,6 +223,11 @@ function OtherCostsDashboard({ monthPeriod }) {
 }
 
 export default function KeuanganPage() {
+  const { user } = useAuth();
+  if (user && user.role !== 'owner') {
+    return <div className="text-center mt-20 text-textmuted">Akses Ditolak. Halaman ini khusus Owner.</div>;
+  }
+
   const { month: curMonth, year: curYear } = currentMonthYear();
   const [topTab, setTopTab] = useState('ringkasan');
   const [tabView, setTabView] = useState('bulanan');
