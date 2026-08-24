@@ -5,6 +5,8 @@ import { api } from '@/lib/api';
 import Card from '@/components/ui/Card';
 import Table from '@/components/ui/Table';
 import Tabs from '@/components/ui/Tabs';
+import Button from '@/components/ui/Button';
+import Modal from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Input';
 import { formatRupiah, currentMonthYear, formatTanggalPendek } from '@/lib/utils';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
@@ -223,8 +225,7 @@ function OtherCostsDashboard({ monthPeriod }) {
   );
 }
 
-export default function KeuanganPage() {
-  function MarketingDashboard({ monthPeriod }) {
+function MarketingDashboard({ monthPeriod }) {
   const [year, month] = monthPeriod.split('-').map(Number);
   const [modal, setModal] = useState(false);
   const { data: report, loading, refetch } = useData(() => api.getMarketingDashboard(month, year), [month, year]);
@@ -282,11 +283,9 @@ export default function KeuanganPage() {
     </div>
   );
 }
-  const { user } = useAuth();
-  if (user && user.role !== 'owner') {
-    return <div className="text-center mt-20 text-textmuted">Akses Ditolak. Halaman ini khusus Owner.</div>;
-  }
 
+export default function KeuanganPage() {
+  const { user } = useAuth();
   const { month: curMonth, year: curYear } = currentMonthYear();
   const [topTab, setTopTab] = useState('ringkasan');
   const [tabView, setTabView] = useState('bulanan');
@@ -297,17 +296,25 @@ export default function KeuanganPage() {
   const targetYear = tabView === 'bulanan' ? Number(monthPeriod.split('-')[0]) : Number(yearPeriod);
   const targetMonth = tabView === 'bulanan' ? Number(monthPeriod.split('-')[1]) : null;
 
-  const { data: statement, loading } = useData(() => api.generateIncomeStatement(targetMonth, targetYear), [targetMonth, targetYear, tabView]);
-  const { data: apar } = useData(() => api.getAPAR(), []);
-  const { data: expensesRaw } = useData(() => api.listExpenses({ month: targetMonth, year: targetYear }), [targetMonth, targetYear, tabView]);
+  const isOwner = !user || user.role === 'owner';
+
+  const { data: statement, loading } = useData(
+    () => (isOwner ? api.generateIncomeStatement(targetMonth, targetYear) : Promise.resolve(null)),
+    [targetMonth, targetYear, tabView, isOwner]
+  );
+  const { data: apar } = useData(() => (isOwner ? api.getAPAR() : Promise.resolve([])), [isOwner]);
+  const { data: expensesRaw } = useData(
+    () => (isOwner ? api.listExpenses({ month: targetMonth, year: targetYear }) : Promise.resolve([])),
+    [targetMonth, targetYear, tabView, isOwner]
+  );
 
   const { data: rawSales } = useData(() => {
-    if (tabView !== 'bulanan') return Promise.resolve([]);
+    if (!isOwner || tabView !== 'bulanan') return Promise.resolve([]);
     const startStr = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
     const lastDay = new Date(targetYear, targetMonth, 0).getDate();
     const endStr = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${lastDay}`;
     return api.getSales({ startDate: startStr, endDate: endStr });
-  }, [targetMonth, targetYear, tabView]);
+  }, [targetMonth, targetYear, tabView, isOwner]);
 
   const chartData = useMemo(() => {
     if (tabView === 'tahunan' && statement?.monthly_breakdown) {
@@ -349,6 +356,10 @@ export default function KeuanganPage() {
     </div>
   );
 
+  if (user && user.role !== 'owner') {
+    return <div className="text-center mt-20 text-textmuted">Akses Ditolak. Halaman ini khusus Owner.</div>;
+  }
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -361,6 +372,7 @@ export default function KeuanganPage() {
             { value: 'ringkasan', label: 'Ringkasan' },
             { value: 'lainnya', label: 'Biaya Lainnya' },
             { value: 'uangkeluar', label: 'Uang Keluar' },
+            { value: 'marketing', label: 'Marketing' },
           ]}
           active={topTab}
           onChange={setTopTab}
@@ -405,7 +417,7 @@ export default function KeuanganPage() {
                     <div className="flex justify-between border-t border-white/[0.1] pt-2 font-bold text-info"><span>Laba Kotor (Gross Profit)</span><span>{formatRupiah(statement.gross_profit)}</span></div>
 
                     <div className="flex justify-between text-danger mt-4"><span className="text-textmuted">(-) OPEX Variabel (Pengeluaran Kas)</span><span>-{formatRupiah(statement.opex_var)}</span></div>
-                    <div className="flex justify-between text-danger"><span className="text-textmuted">(-) OPEX Tetap (Gaji, Sewa, dll)</span><span>-{formatRupiah(statement.opex_fixed)}</span></div>
+                    <div className="flex justify-between text-danger"><span className="text-textmuted">(-) OPEX Tetap (Gaji, Sewa, Marketing, dll)</span><span>-{formatRupiah(statement.opex_fixed)}</span></div>
                     <div className="flex justify-between border-t border-white/[0.1] pt-2 font-bold text-warning"><span>EBITDA (Laba Operasional)</span><span>{formatRupiah(statement.ebitda)}</span></div>
 
                     <div className="flex justify-between text-danger mt-4"><span className="text-textmuted">(-) Pajak & Depresiasi</span><span>-{formatRupiah(statement.depreciation)}</span></div>
@@ -476,6 +488,17 @@ export default function KeuanganPage() {
             </div>
           </div>
           <CashOutflowDashboard monthPeriod={monthPeriod} />
+        </div>
+      )}
+
+      {topTab === 'marketing' && (
+        <div className="space-y-6">
+          <div className="flex justify-end">
+            <div className="w-40">
+              <Select options={monthOptions()} value={monthPeriod} onChange={(e) => setMonthPeriod(e.target.value)} />
+            </div>
+          </div>
+          <MarketingDashboard monthPeriod={monthPeriod} />
         </div>
       )}
     </div>
