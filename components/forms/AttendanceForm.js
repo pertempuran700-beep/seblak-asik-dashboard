@@ -69,7 +69,12 @@ export default function AttendanceForm({ employeeId, employeeName, todayRecord, 
       setReasonText('');
       onSuccess?.();
     } catch (err) {
-      toast?.showToast(err.message, 'error');
+      // 🔥 Kalau server minta alasan (telat, meski dalam radius) → buka modal, bukan cuma tampilkan error
+      if (!isFromModal && err.message.includes('alasan')) {
+        setShowReasonModal(true);
+      } else {
+        toast?.showToast(err.message, 'error');
+      }
     } finally {
       setSubmitting(false);
     }
