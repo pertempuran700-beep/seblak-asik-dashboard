@@ -126,8 +126,8 @@ export default function StockInForm({ products, vendors, onSuccess, onClose }) {
       <div className="grid grid-cols-2 gap-3">
         <Input
           label={`Jumlah Beli (${selectedProduct?.unit || 'satuan'})`}
-          type="number" min="1" required
-          value={form.qtyBeli}
+           type="number" min="0.01" step="0.01" required
+            value={form.qtyBeli}
           onChange={(e) => set('qtyBeli', e.target.value)}
         />
         <Input
