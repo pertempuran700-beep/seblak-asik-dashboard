@@ -462,6 +462,37 @@ export default function KeuanganPage() {
                   </Card>
                 </div>
               </div>
+
+              <Card title="🧾 Penjabaran Alokasi OPEX">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-textmuted uppercase mb-2 font-bold">OPEX Tetap</p>
+                    <Table
+                      columns={[
+                        { key: 'label', label: 'Komponen' },
+                        { key: 'amount', label: 'Nominal', render: (r) => formatRupiah(r.amount) },
+                      ]}
+                      rows={statement.opex_breakdown_fixed || []}
+                      emptyMessage="Tidak ada data"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-xs text-textmuted uppercase mb-2 font-bold">OPEX Variabel</p>
+                    <Table
+                      columns={[
+                        { key: 'label', label: 'Kategori' },
+                        { key: 'amount', label: 'Nominal', render: (r) => formatRupiah(r.amount) },
+                      ]}
+                      rows={statement.opex_breakdown_var || []}
+                      emptyMessage="Tidak ada data"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-between items-center mt-3 pt-3 border-t border-white/[0.08] text-sm font-bold">
+                  <span>Total OPEX</span>
+                  <span className="text-danger">{formatRupiah(statement.opex)}</span>
+                </div>
+              </Card>
             </>
           ) : (
             <p className="text-center py-10 text-textmuted">Data gagal dimuat.</p>
