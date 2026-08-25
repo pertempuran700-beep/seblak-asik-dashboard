@@ -2,12 +2,15 @@
 import { useState, useMemo } from 'react';
 import { useData } from '@/hooks/useData';
 import { api } from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 import Card from '@/components/ui/Card';
 import { formatRupiah, formatTanggalPendek } from '@/lib/utils';
 import SalesLineChart from '@/components/charts/SalesLineChart';
-import { useAuth } from '@/hooks/useAuth';
 
 export default function OverviewDashboard() {
+  const { user } = useAuth();
+  const isOwner = user?.role === 'owner';
+
   const [period, setPeriod] = useState('7');
   const [showCalendar, setShowCalendar] = useState(false);
   const [customRange, setCustomDates] = useState({ start: '', end: '' });
@@ -20,8 +23,6 @@ export default function OverviewDashboard() {
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
-    const { user } = useAuth();
-  const isOwner = user?.role === 'owner';
   };
 
   const dateRangeStr = useMemo(() => {
@@ -42,13 +43,12 @@ export default function OverviewDashboard() {
     () => api.getDashboardSummary(dateRangeStr.start, dateRangeStr.end),
     [dateRangeStr.start, dateRangeStr.end]
   );
-  
-  const { data: rawSales } = useData(() => api.getSales({ 
-    startDate: dateRangeStr.start, 
-    endDate: dateRangeStr.end 
+
+  const { data: rawSales } = useData(() => api.getSales({
+    startDate: dateRangeStr.start,
+    endDate: dateRangeStr.end
   }), [dateRangeStr]);
 
-  // Kalkulator Pembagi Hari untuk Target Pro-rata
   const timeDivider = useMemo(() => {
     if (period === 'today') return 1;
     if (period === '7') return 7;
@@ -59,21 +59,19 @@ export default function OverviewDashboard() {
       const e = new Date(activeCustomRange.end);
       return Math.max(1, Math.ceil(Math.abs(e - s) / (1000 * 60 * 60 * 24)) + 1);
     }
-    return 30; 
+    return 30;
   }, [period, activeCustomRange]);
 
-  // Kalkulasi Keuangan
   const fin = dashboardData?.finance_real || { cogs: 0, opex_var: 0, opex_fixed_prorated: 0, tax_dep_prorated: 0, admin_fee: 0 };
   const revenue = dashboardData?.total_revenue || 0;
-  
+
   const grossProfit = revenue - fin.cogs;
   const gpm = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
-  
+
   const ebitda = grossProfit - fin.opex_var - fin.opex_fixed_prorated - fin.admin_fee;
   const netProfit = ebitda - fin.tax_dep_prorated;
   const npm = revenue > 0 ? (netProfit / revenue) * 100 : 0;
 
-  // Target Keuangan (Ditarik dari Backend & Diproporsikan sesuai hari)
   const tRev = dashboardData?.targets?.revenue || 0;
   const tEbitda = dashboardData?.targets?.ebitda || 0;
   const targetGPM = dashboardData?.targets?.gpm || 0;
@@ -82,15 +80,12 @@ export default function OverviewDashboard() {
   const targetRevenueProrated = (tRev / 30) * timeDivider;
   const targetEbitdaProrated = (tEbitda / 30) * timeDivider;
 
-  // Laporan Produk
   const dynamicTopProducts = dashboardData?.product_performance?.slice(0, 10) || [];
   const dynamicWorstProducts = dashboardData?.product_performance ? [...dashboardData.product_performance].reverse().slice(0, 5) : [];
 
-// Data Grafik (Hanya Kasir Tunai)
   const chartData = useMemo(() => {
     if (!rawSales) return [];
     const grouped = {};
-    // Tambahkan filter !s.is_qris sebelum forEach
     rawSales.filter(s => !s.is_qris).forEach(s => {
       const dateStr = formatTanggalPendek(s.date);
       grouped[dateStr] = (grouped[dateStr] || 0) + Number(s.yang_diterima || s.total || 0);
@@ -109,12 +104,11 @@ export default function OverviewDashboard() {
   };
 
   const displayCustomDate = (dateStr) => {
-    if(!dateStr) return '';
-    try { return formatTanggalPendek(dateStr); } 
-    catch(e) { return dateStr; }
+    if (!dateStr) return '';
+    try { return formatTanggalPendek(dateStr); }
+    catch (e) { return dateStr; }
   };
 
-  // Komponen Card dengan Indikator Target
   const FinancialCard = ({ label, amount, targetAmount, isPercentTarget, pct, pctLabel, colorClass }) => (
     <div className={`bg-surface2 p-4 rounded-card border border-white/[0.08] hover:border-${colorClass.split('-')[1]}/50 transition-all`}>
       <h3 className="text-textmuted text-sm font-semibold mb-1">{label}</h3>
@@ -131,14 +125,13 @@ export default function OverviewDashboard() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
-      
-      {/* HEADER & FILTER TANGGAL */}
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">🏠 Ringkasan Eksekutif</h1>
           <p className="text-sm text-textmuted">Kalkulasi Keuangan Real-time Seblak Asik</p>
         </div>
-        
+
         <div className="flex flex-col items-end gap-2 z-50">
           <div className="flex bg-surface2 p-1 rounded-lg gap-1 border border-border/50 relative items-center">
             {[
@@ -173,12 +166,10 @@ export default function OverviewDashboard() {
                   <div className="space-y-3">
                     <div>
                       <label className="text-xs text-textmuted block mb-1">Mulai Tanggal</label>
-                      {/* FIX: Bg putih, text hitam agar terbaca jelas */}
                       <input type="date" value={customRange.start} onChange={(e) => setCustomDates({ ...customRange, start: e.target.value })} className="w-full bg-white border border-border/50 rounded p-2 text-xs text-black" />
                     </div>
                     <div>
                       <label className="text-xs text-textmuted block mb-1">Sampai Tanggal</label>
-                      {/* FIX: Bg putih, text hitam agar terbaca jelas */}
                       <input type="date" value={customRange.end} onChange={(e) => setCustomDates({ ...customRange, end: e.target.value })} className="w-full bg-white border border-border/50 rounded p-2 text-xs text-black" />
                     </div>
                     <button onClick={handleCustomApply} className="w-full bg-primary hover:bg-primary/90 text-white text-xs font-bold py-2 rounded">Terapkan Rentang</button>
@@ -187,7 +178,7 @@ export default function OverviewDashboard() {
               )}
             </div>
           </div>
-          
+
           {period === 'custom' && activeCustomRange.start && (
             <div className="text-xs font-medium text-primary bg-primary/10 px-3 py-1.5 rounded-full border border-primary/20 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
@@ -197,45 +188,44 @@ export default function OverviewDashboard() {
         </div>
       </div>
 
-      {/* METRIK KEUANGAN REAL-TIME DENGAN TARGET */}
       <div className={`grid grid-cols-1 md:grid-cols-2 ${isOwner ? 'lg:grid-cols-4' : 'lg:grid-cols-2'} gap-4`}>
-        <FinancialCard 
-           label="💰 REVENUE (Omzet Bersih)" 
-           amount={formatRupiah(revenue)} 
+        <FinancialCard
+           label="💰 REVENUE (Omzet Bersih)"
+           amount={formatRupiah(revenue)}
            targetAmount={targetRevenueProrated}
            isPercentTarget={false}
-           pct={targetRevenueProrated > 0 ? Math.min((revenue / targetRevenueProrated) * 100, 100) : 0} 
-           pctLabel="Pencapaian Target" 
-           colorClass="text-white" 
+           pct={targetRevenueProrated > 0 ? Math.min((revenue / targetRevenueProrated) * 100, 100) : 0}
+           pctLabel="Pencapaian Target"
+           colorClass="text-white"
         />
-        <FinancialCard 
-           label="📊 GPM (Laba Kotor)" 
-           amount={formatRupiah(grossProfit)} 
+        <FinancialCard
+           label="📊 GPM (Laba Kotor)"
+           amount={formatRupiah(grossProfit)}
            targetAmount={targetGPM}
            isPercentTarget={true}
-           pct={gpm} 
-           pctLabel="Margin Kotor Riil" 
-           colorClass="text-info" 
+           pct={gpm}
+           pctLabel="Margin Kotor Riil"
+           colorClass="text-info"
         />
         {isOwner && (
           <>
-            <FinancialCard 
-               label="☕ EBITDA (Laba Operasional)" 
-               amount={formatRupiah(ebitda)} 
+            <FinancialCard
+               label="☕ EBITDA (Laba Operasional)"
+               amount={formatRupiah(ebitda)}
                targetAmount={targetEbitdaProrated}
                isPercentTarget={false}
-               pct={targetEbitdaProrated > 0 ? Math.min((ebitda / targetEbitdaProrated) * 100, 100) : 0} 
-               pctLabel="Pencapaian Target" 
-               colorClass="text-warning" 
+               pct={targetEbitdaProrated > 0 ? Math.min((ebitda / targetEbitdaProrated) * 100, 100) : 0}
+               pctLabel="Pencapaian Target"
+               colorClass="text-warning"
             />
-            <FinancialCard 
-               label="💵 NPM (Laba Bersih)" 
-               amount={formatRupiah(netProfit)} 
+            <FinancialCard
+               label="💵 NPM (Laba Bersih)"
+               amount={formatRupiah(netProfit)}
                targetAmount={targetNPM}
                isPercentTarget={true}
-               pct={npm} 
-               pctLabel="Margin Bersih Riil" 
-               colorClass="text-success" 
+               pct={npm}
+               pctLabel="Margin Bersih Riil"
+               colorClass="text-success"
             />
           </>
         )}
@@ -255,7 +245,6 @@ export default function OverviewDashboard() {
         </div>
       </div>
 
-      {/* GRAFIK */}
       <Card title="📈 Grafik Tren Omzet">
         {chartData.length > 0 ? (
           <div className="h-64"><SalesLineChart data={chartData} /></div>
@@ -264,7 +253,6 @@ export default function OverviewDashboard() {
         )}
       </Card>
 
-      {/* LAPORAN PERFORMA PRODUK (Detail dengan Unit & Rupiah) */}
       <Card title="📋 Laporan Performa Produk">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-surface2 p-4 rounded-lg border border-border/50">
@@ -309,11 +297,11 @@ export default function OverviewDashboard() {
                   <span className="text-xl">{p.current_stock <= 0 ? '🔴' : '🟡'}</span>
                   <div>
                     <p className="font-bold text-sm">{p.name}</p>
-                    <p className="text-xs text-textmuted">Batas Minimum: {p.min_stock} {p.sell_unit}</p>
+                    <p className="text-xs text-textmuted">Batas Minimum: {p.min_stock}</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-danger text-sm">Sisa: {p.current_stock} {p.sell_unit}</p>
+                  <p className="font-bold text-danger text-sm">Sisa: {p.current_stock}</p>
                 </div>
               </div>
             ))
