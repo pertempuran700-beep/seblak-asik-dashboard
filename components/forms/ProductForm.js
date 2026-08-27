@@ -21,6 +21,7 @@ export default function ProductForm({ product, products, onSuccess, onClose }) {
     satuanJual: product?.sell_unit || '',
     hargaJual: product?.sell_price || '',
     minStok: product?.min_stock || 5,
+    status: product?.status || 'Active',
   });
   const [useNewCategory, setUseNewCategory] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -112,6 +113,18 @@ export default function ProductForm({ product, products, onSuccess, onClose }) {
         <Input label="Berat (opsional)" value={form.berat} onChange={(e) => set('berat', e.target.value)} />
         <Input label="Min. Stok (alert)" type="number" min="0" value={form.minStok} onChange={(e) => set('minStok', e.target.value)} />
       </div>
+
+      {isEdit && (
+        <Select
+          label="Status Produk"
+          value={form.status}
+          onChange={(e) => set('status', e.target.value)}
+          options={[
+            { value: 'Active', label: '✅ Aktif' },
+            { value: 'Discontinued', label: '⛔ Nonaktif (Discontinued)' },
+          ]}
+        />
+      )}
 
       <Button type="submit" full disabled={submitting}>
         {submitting ? 'Menyimpan...' : isEdit ? 'Simpan Perubahan' : 'Tambah Produk'}
