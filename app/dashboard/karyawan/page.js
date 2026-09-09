@@ -164,11 +164,12 @@ export default function KaryawanPage() {
   const { data: settings } = useData(() => api.getSystemSettings(), []);
 
   // 🔥 Owner/Admin: generatePayroll (massal, tabel semua orang). Employee: getPayslip (cuma milik sendiri).
-  const { data: payroll, loading: payrollLoading, refetch: refetchPayroll } = useData(
+    const { data: payroll, loading: payrollLoading, refetch: refetchPayroll } = useData(
     () => isOwner || user?.role === 'admin'
       ? api.generatePayroll(Number(period.split('-')[1]), Number(period.split('-')[0]))
       : Promise.resolve(null),
-    [period, isOwner, user]
+    [period, isOwner, user],
+    0
   );
   const { data: mySlip, loading: mySlipLoading, refetch: refetchMySlip } = useData(
     () => (!isOwner && user?.role !== 'admin' && user?.employee_id)
