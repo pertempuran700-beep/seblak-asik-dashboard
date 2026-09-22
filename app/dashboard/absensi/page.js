@@ -15,6 +15,7 @@ export default function AbsensiPage() {
 
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [rekapDate, setRekapDate] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     if (user && (user.role === 'owner' || user.role === 'admin' || user.role === 'supervisor')) {
@@ -29,6 +30,13 @@ export default function AbsensiPage() {
     [user, period]
   );
 
+  const isManagement = user && (user.role === 'owner' || user.role === 'admin' || user.role === 'supervisor');
+
+  const { data: rekap, loading: rekapLoading, refetch: refetchRekap } = useData(
+    () => (isManagement ? api.getTodayAttendanceRekap(rekapDate) : Promise.resolve(null)),
+    [rekapDate, isManagement]
+  );
+  
   const today = new Date();
   const todayRecord = summary?.records?.find(r => {
     if (r.employee_id !== user?.employee_id) return false;
@@ -55,6 +63,46 @@ export default function AbsensiPage() {
       <Card>
         <AttendanceForm employeeId={user?.employee_id} employeeName={user?.full_name} todayRecord={todayRecord} onSuccess={refetch} />
       </Card>
+
+        {isManagement && (
+        <Card title="📋 Rekap Kehadiran Harian">
+          <div className="mb-4 max-w-xs">
+            <label className="block text-xs text-textmuted mb-1.5">Pilih Tanggal</label>
+            <input
+              type="date"
+              value={rekapDate}
+              onChange={(e) => setRekapDate(e.target.value)}
+              className="w-full bg-surface2 border border-white/[0.08] rounded-input px-3 py-2.5 text-sm text-text focus:border-primary outline-none [color-scheme:dark]"
+            />
+          </div>
+
+          {rekapLoading ? (
+            <p className="text-textmuted text-sm text-center py-6">Memuat rekap...</p>
+          ) : (
+            <Table
+              columns={[
+                { key: 'employee_name', label: 'Karyawan' },
+                {
+                  key: 'status', label: 'Status',
+                  render: (r) => {
+                    const color =
+                      r.status === 'Hadir' ? 'text-success font-semibold' :
+                      r.status === 'Telat' ? 'text-warning font-semibold' :
+                      r.status === 'Alpha/Ditolak' ? 'text-danger font-semibold' :
+                      r.status === 'Belum Absen' ? 'text-textmuted' :
+                      'text-info font-semibold';
+                    return <span className={color}>{r.status}</span>;
+                  }
+                },
+                { key: 'clock_in', label: 'Jam Masuk', render: (r) => r.clock_in ? new Date(r.clock_in).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-' },
+                { key: 'late_minutes', label: 'Telat', render: (r) => r.late_minutes && r.late_minutes !== '00:00' ? r.late_minutes : '-' },
+              ]}
+              rows={rekap || []}
+              emptyMessage="Tidak ada karyawan aktif"
+            />
+          )}
+        </Card>
+      )}
 
       <Card title="Riwayat Kehadiran & Izin Tim">
         {summary ? (
