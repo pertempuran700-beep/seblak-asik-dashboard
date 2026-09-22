@@ -295,7 +295,7 @@ export default function KaryawanPage() {
           <div className="flex items-center gap-4 mb-3 text-[10px] text-textmuted">
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-success inline-block"></span> Sudah Absen</span>
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-danger inline-block"></span> Belum Absen</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-primary inline-block"></span> Jadwal Mendatang</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-warning inline-block"></span> Jadwal Mendatang</span>
           </div>
           <div className="grid grid-cols-7 gap-1 md:gap-2 text-center text-xs md:text-sm font-bold text-textmuted mb-2">
             <div>Min</div><div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div>
@@ -321,8 +321,8 @@ export default function KaryawanPage() {
                     {daySchedules.map((s, i) => {
                       const attended = attendedSet.has(`${s.employee_id}_${day.dateString}`);
                       const isPastOrToday = day.dateString <= todayStr;
-                    const colorClasses = !isPastOrToday
-                        ? 'bg-primary/20 hover:bg-primary/40 text-primary border-primary/30'
+                      const colorClasses = !isPastOrToday
+                        ? 'bg-warning/20 hover:bg-warning/40 text-warning border-warning/30'
                         : attended
                           ? 'bg-success/20 hover:bg-success/40 text-success border-success/30'
                           : 'bg-danger/20 hover:bg-danger/40 text-danger border-danger/30';
