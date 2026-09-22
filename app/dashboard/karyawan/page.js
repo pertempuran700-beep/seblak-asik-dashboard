@@ -181,6 +181,19 @@ export default function KaryawanPage() {
   const { data: performance, loading: performanceLoading, refetch: refetchPerf } = useData(() => api.getPerformanceSummary(period), [period]);
   const { data: bonusLog, loading: bonusLoading } = useData(() => api.getDailyBonusLog(period), [period]);
   const { data: monthlySchedule, refetch: refetchSchedule } = useData(() => api.getMonthlySchedule(period), [period]);
+    const { data: attendanceData } = useData(() => api.getAttendanceSummary(null, period), [period]);
+
+  const attendedSet = useMemo(() => {
+    const set = new Set();
+    (attendanceData?.records || []).forEach((r) => {
+      const d = new Date(r.date);
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      set.add(`${r.employee_id}_${dateStr}`);
+    });
+    return set;
+  }, [attendanceData]);
+
+  const todayStr = new Date().toISOString().split('T')[0];
 
   const filterOwnData = (arr) => {
     if (isOwner) return arr || [];
@@ -277,8 +290,13 @@ export default function KaryawanPage() {
         <Card>{loading ? <p className="text-center py-8">Memuat...</p> : <Table columns={columns} rows={employees} />}</Card>
       )}
 
-      {tab === 'schedule' && (
+            {tab === 'schedule' && (
         <Card title={`Kalender Rotasi Kerja — Periode ${period}`}>
+          <div className="flex items-center gap-4 mb-3 text-[10px] text-textmuted">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-info inline-block"></span> Sudah Absen</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-danger inline-block"></span> Belum Absen</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-primary inline-block"></span> Jadwal Mendatang</span>
+          </div>
           <div className="grid grid-cols-7 gap-1 md:gap-2 text-center text-xs md:text-sm font-bold text-textmuted mb-2">
             <div>Min</div><div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div>
           </div>
@@ -299,19 +317,28 @@ export default function KaryawanPage() {
                   className={`bg-surface2 border ${isAdmin ? 'cursor-pointer hover:border-primary/50' : ''} border-white/[0.05] rounded p-1 md:p-2 h-24 md:h-32 overflow-y-auto flex flex-col hide-scrollbar transition-colors`}
                 >
                   <div className="text-right text-xs md:text-sm font-bold text-white mb-1 opacity-70">{day.dayNumber}</div>
-                  <div className="space-y-1 flex-1">
-                    {daySchedules.map((s, i) => (
-                      <div
-                        key={i}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if(isAdmin) { setSelectedDate(day.dateString); setEditData(s); setModal('schedule'); }
-                        }}
-                        className="bg-primary/20 hover:bg-primary/40 text-primary border border-primary/30 text-[9px] md:text-xs rounded px-1 py-0.5 md:py-1 truncate cursor-pointer transition-colors"
-                      >
-                        <span className="font-bold">{s.Name.split(' ')[0]}</span> <span className="opacity-80">({s.start_time}-{s.end_time})</span>
-                      </div>
-                    ))}
+                                   <div className="space-y-1 flex-1">
+                    {daySchedules.map((s, i) => {
+                      const attended = attendedSet.has(`${s.employee_id}_${day.dateString}`);
+                      const isPastOrToday = day.dateString <= todayStr;
+                      const colorClasses = !isPastOrToday
+                        ? 'bg-primary/20 hover:bg-primary/40 text-primary border-primary/30'
+                        : attended
+                          ? 'bg-info/20 hover:bg-info/40 text-info border-info/30'
+                          : 'bg-danger/20 hover:bg-danger/40 text-danger border-danger/30';
+                      return (
+                        <div
+                          key={i}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if(isAdmin) { setSelectedDate(day.dateString); setEditData(s); setModal('schedule'); }
+                          }}
+                          className={`border ${colorClasses} text-[9px] md:text-xs rounded px-1 py-0.5 md:py-1 truncate cursor-pointer transition-colors`}
+                        >
+                          <span className="font-bold">{s.Name.split(' ')[0]}</span> <span className="opacity-80">({s.start_time}-{s.end_time})</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
