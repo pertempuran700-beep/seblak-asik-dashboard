@@ -293,7 +293,7 @@ export default function KaryawanPage() {
             {tab === 'schedule' && (
         <Card title={`Kalender Rotasi Kerja — Periode ${period}`}>
           <div className="flex items-center gap-4 mb-3 text-[10px] text-textmuted">
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-info inline-block"></span> Sudah Absen</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-success inline-block"></span> Sudah Absen</span>
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-danger inline-block"></span> Belum Absen</span>
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-primary inline-block"></span> Jadwal Mendatang</span>
           </div>
@@ -321,10 +321,10 @@ export default function KaryawanPage() {
                     {daySchedules.map((s, i) => {
                       const attended = attendedSet.has(`${s.employee_id}_${day.dateString}`);
                       const isPastOrToday = day.dateString <= todayStr;
-                      const colorClasses = !isPastOrToday
+                    const colorClasses = !isPastOrToday
                         ? 'bg-primary/20 hover:bg-primary/40 text-primary border-primary/30'
                         : attended
-                          ? 'bg-info/20 hover:bg-info/40 text-info border-info/30'
+                          ? 'bg-success/20 hover:bg-success/40 text-success border-success/30'
                           : 'bg-danger/20 hover:bg-danger/40 text-danger border-danger/30';
                       return (
                         <div
