@@ -116,16 +116,17 @@ export default function HutangPiutangPage() {
   // Filter Bulan & Tahun
   const { month, year } = currentMonthYear();
   const [periodFilter, setPeriodFilter] = useState(`${year}-${String(month).padStart(2, '0')}`);
+  const [showAllMonths, setShowAllMonths] = useState(true);
   
   const [tab, setTab] = useState('Payable');
   const [payingRecord, setPayingRecord] = useState(null);
   const [loanModal, setLoanModal] = useState(false);
 
   // Menyaring data berdasarkan Tipe Tab (Hutang/Piutang) DAN Bulan-Tahun Jatuh Tempo/Dibuat
-  const filtered = (records || []).filter((r) => {
+    const filtered = (records || []).filter((r) => {
     if (r.type !== tab) return false;
-    // Logika Filter: Jika ada due_date, filter by due_date. Jika tidak ada, abaikan filter bulan.
-    if (!r.due_date) return true; 
+    if (showAllMonths) return true;
+    if (!r.due_date) return true;
     const rDate = new Date(r.due_date);
     const rPeriod = `${rDate.getFullYear()}-${String(rDate.getMonth() + 1).padStart(2, '0')}`;
     return rPeriod === periodFilter;
@@ -154,11 +155,16 @@ export default function HutangPiutangPage() {
           <p className="text-sm text-textmuted">Manajemen Kasbon Karyawan dan Tagihan Vendor</p>
         </div>
         <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-xs text-textmuted cursor-pointer bg-surface2 px-3 py-2 rounded border border-white/[0.08]">
+            <input type="checkbox" checked={showAllMonths} onChange={(e) => setShowAllMonths(e.target.checked)} />
+            Tampilkan Semua
+          </label>
           <input 
             type="month" 
             value={periodFilter} 
             onChange={(e) => setPeriodFilter(e.target.value)} 
-            className="bg-surface2 border border-white/[0.08] rounded p-2 text-sm text-white focus:outline-none"
+            disabled={showAllMonths}
+            className="bg-surface2 border border-white/[0.08] rounded p-2 text-sm text-white focus:outline-none disabled:opacity-40"
           />
           {tab === 'Receivable' && (
             <Button onClick={() => setLoanModal(true)}>+ Input Piutang Karyawan (Kasbon)</Button>
@@ -175,7 +181,7 @@ export default function HutangPiutangPage() {
         onChange={setTab}
       />
 
-      <Card title={`Daftar ${tab === 'Payable' ? 'Hutang' : 'Piutang'} - Periode ${periodFilter}`}>
+        <Card title={`Daftar ${tab === 'Payable' ? 'Hutang' : 'Piutang'} - ${showAllMonths ? 'Semua Periode' : periodFilter}`}>
         {loading ? <p className="text-textmuted text-sm text-center py-8">Memuat sinkronisasi data tagihan...</p> : <Table columns={columns} rows={filtered} emptyMessage={`Tidak ada data ${tab === 'Payable' ? 'hutang' : 'piutang'} di bulan ini.`} />}
       </Card>
 
