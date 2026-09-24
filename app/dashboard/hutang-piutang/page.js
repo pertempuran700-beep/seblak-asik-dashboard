@@ -123,21 +123,30 @@ export default function HutangPiutangPage() {
   const [loanModal, setLoanModal] = useState(false);
 
   // Menyaring data berdasarkan Tipe Tab (Hutang/Piutang) DAN Bulan-Tahun Jatuh Tempo/Dibuat
-    const filtered = (records || []).filter((r) => {
+      const filtered = (records || []).filter((r) => {
     if (r.type !== tab) return false;
     if (showAllMonths) return true;
     if (!r.due_date) return true;
     const rDate = new Date(r.due_date);
-    const rPeriod = `${rDate.getFullYear()}-${String(rDate.getMonth() + 1).padStart(2, '0')}`;
-    return rPeriod === periodFilter;
-  });
+    const duePeriod = `${rDate.getFullYear()}-${String(rDate.getMonth() + 1).padStart(2, '0')}`;
+    if (r.start_month) {
+      return periodFilter >= r.start_month && periodFilter <= duePeriod;
+    }
+    return duePeriod === periodFilter;
+    });
 
   const columns = [
     { key: 'counterparty', label: tab === 'Payable' ? 'Hutang Ke (Vendor)' : 'Piutang Dari (Pelanggan/Karyawan)' },
     { key: 'amount', label: 'Total', render: (r) => formatRupiah(r.amount) },
     { key: 'paid_amount', label: 'Terbayar', render: (r) => formatRupiah(r.paid_amount) },
     { key: 'remaining', label: 'Sisa Tagihan', render: (r) => <span className="font-bold text-danger">{formatRupiah(r.remaining)}</span> },
-    { key: 'due_date', label: 'Jatuh Tempo', render: (r) => r.due_date ? new Date(r.due_date).toLocaleDateString('id-ID', {day: '2-digit', month: 'short', year: 'numeric'}) : '-' },
+        { key: 'due_date', label: 'Jatuh Tempo', render: (r) => (
+        <div>
+          <div>{r.due_date ? new Date(r.due_date).toLocaleDateString('id-ID', {day: '2-digit', month: 'short', year: 'numeric'}) : '-'}</div>
+          {r.start_month && <div className="text-[10px] text-textmuted">mulai {r.start_month}</div>}
+        </div>
+      )
+    },
     { key: 'status', label: 'Status', render: (r) => <Badge variant={r.status === 'Paid' ? 'success' : r.status === 'Partial' ? 'warning' : 'neutral'}>{r.status}</Badge> },
     {
       key: 'actions',
