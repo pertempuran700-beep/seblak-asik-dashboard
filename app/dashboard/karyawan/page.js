@@ -164,7 +164,7 @@ export default function KaryawanPage() {
   const { data: settings } = useData(() => api.getSystemSettings(), []);
 
   // 🔥 Owner/Admin: generatePayroll (massal, tabel semua orang). Employee: getPayslip (cuma milik sendiri).
-    const { data: payroll, loading: payrollLoading, refetch: refetchPayroll } = useData(
+  const { data: payroll, loading: payrollLoading, refetch: refetchPayroll } = useData(
     () => isOwner || user?.role === 'admin'
       ? api.generatePayroll(Number(period.split('-')[1]), Number(period.split('-')[0]))
       : Promise.resolve(null),
@@ -181,7 +181,7 @@ export default function KaryawanPage() {
   const { data: performance, loading: performanceLoading, refetch: refetchPerf } = useData(() => api.getPerformanceSummary(period), [period]);
   const { data: bonusLog, loading: bonusLoading } = useData(() => api.getDailyBonusLog(period), [period]);
   const { data: monthlySchedule, refetch: refetchSchedule } = useData(() => api.getMonthlySchedule(period), [period]);
-    const { data: attendanceData } = useData(() => api.getAttendanceSummary(null, period), [period]);
+  const { data: attendanceData } = useData(() => api.getAttendanceSummary(null, period), [period]);
 
   const attendedSet = useMemo(() => {
     const set = new Set();
@@ -201,7 +201,20 @@ export default function KaryawanPage() {
   };
 
   const calendarDays = useMemo(() => {
-      // 🔥 Hitung jumlah hari jadwal per karyawan aktif pada bulan terpilih (realtime)
+    const [y, m] = period.split('-');
+    const firstDay = new Date(y, Number(m) - 1, 1).getDay();
+    const daysInMonth = new Date(y, Number(m), 0).getDate();
+
+    const days = [];
+    for (let i = 0; i < firstDay; i++) days.push(null);
+    for (let i = 1; i <= daysInMonth; i++) {
+      const dateStr = `${y}-${m}-${String(i).padStart(2, '0')}`;
+      days.push({ dayNumber: i, dateString: dateStr });
+    }
+    return days;
+  }, [period]);
+
+  // 🔥 BARU: Hitung jumlah hari jadwal per karyawan aktif pada bulan terpilih (realtime)
   const scheduleCountList = useMemo(() => {
     const countMap = {};
     (monthlySchedule || []).forEach((s) => {
@@ -219,19 +232,6 @@ export default function KaryawanPage() {
       }))
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   }, [monthlySchedule, employees]);
-    
-    const [y, m] = period.split('-');
-    const firstDay = new Date(y, Number(m) - 1, 1).getDay();
-    const daysInMonth = new Date(y, Number(m), 0).getDate();
-
-    const days = [];
-    for (let i = 0; i < firstDay; i++) days.push(null);
-    for (let i = 1; i <= daysInMonth; i++) {
-      const dateStr = `${y}-${m}-${String(i).padStart(2, '0')}`;
-      days.push({ dayNumber: i, dateString: dateStr });
-    }
-    return days;
-  }, [period]);
 
   const columns = [
     { key: 'full_name', label: 'Nama' },
@@ -309,82 +309,85 @@ export default function KaryawanPage() {
         <Card>{loading ? <p className="text-center py-8">Memuat...</p> : <Table columns={columns} rows={employees} />}</Card>
       )}
 
-                  {tab === 'schedule' && (
+      {tab === 'schedule' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
-        <div className="flex-1 min-w-0 w-full">
-        <Card title={`Kalender Rotasi Kerja — Periode ${period}`}>
-          <div className="flex items-center gap-4 mb-3 text-[10px] text-textmuted">
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-success inline-block"></span> Sudah Absen</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-danger inline-block"></span> Belum Absen</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-warning inline-block"></span> Jadwal Mendatang</span>
+          {/* KOLOM KIRI: KALENDER */}
+          <div className="flex-1 min-w-0 w-full">
+            <Card title={`Kalender Rotasi Kerja — Periode ${period}`}>
+              <div className="flex items-center gap-4 mb-3 text-[10px] text-textmuted">
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-success inline-block"></span> Sudah Absen</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-danger inline-block"></span> Belum Absen</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-warning inline-block"></span> Jadwal Mendatang</span>
+              </div>
+              <div className="grid grid-cols-7 gap-1 md:gap-2 text-center text-xs md:text-sm font-bold text-textmuted mb-2">
+                <div>Min</div><div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div>
+              </div>
+
+              <div className="grid grid-cols-7 gap-1 md:gap-2">
+                {calendarDays.map((day, idx) => {
+                  if (!day) return <div key={`empty-${idx}`} className="bg-transparent border border-transparent rounded p-2 h-24"></div>;
+
+                  const daySchedules = (monthlySchedule || []).filter(s => {
+                    const dbDate = s.date.split('/');
+                    return `${dbDate[2]}-${dbDate[1]}-${dbDate[0]}` === day.dateString;
+                  });
+
+                  return (
+                    <div
+                      key={day.dateString}
+                      onClick={() => { if(isAdmin) { setSelectedDate(day.dateString); setEditData(null); setModal('schedule'); } }}
+                      className={`bg-surface2 border ${isAdmin ? 'cursor-pointer hover:border-primary/50' : ''} border-white/[0.05] rounded p-1 md:p-2 h-24 md:h-32 overflow-y-auto flex flex-col hide-scrollbar transition-colors`}
+                    >
+                      <div className="text-right text-xs md:text-sm font-bold text-white mb-1 opacity-70">{day.dayNumber}</div>
+                      <div className="space-y-1 flex-1">
+                        {daySchedules.map((s, i) => {
+                          const attended = attendedSet.has(`${s.employee_id}_${day.dateString}`);
+                          const isPastOrToday = day.dateString <= todayStr;
+                          const colorClasses = !isPastOrToday
+                            ? 'bg-warning/20 hover:bg-warning/40 text-warning border-warning/30'
+                            : attended
+                              ? 'bg-success/20 hover:bg-success/40 text-success border-success/30'
+                              : 'bg-danger/20 hover:bg-danger/40 text-danger border-danger/30';
+                          return (
+                            <div
+                              key={i}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if(isAdmin) { setSelectedDate(day.dateString); setEditData(s); setModal('schedule'); }
+                              }}
+                              className={`border ${colorClasses} text-[9px] md:text-xs rounded px-1 py-0.5 md:py-1 truncate cursor-pointer transition-colors`}
+                            >
+                              <span className="font-bold">{s.Name.split(' ')[0]}</span> <span className="opacity-80">({s.start_time}-{s.end_time})</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
           </div>
-          <div className="grid grid-cols-7 gap-1 md:gap-2 text-center text-xs md:text-sm font-bold text-textmuted mb-2">
-            <div>Min</div><div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div>
-          </div>
 
-          <div className="grid grid-cols-7 gap-1 md:gap-2">
-            {calendarDays.map((day, idx) => {
-              if (!day) return <div key={`empty-${idx}`} className="bg-transparent border border-transparent rounded p-2 h-24"></div>;
-
-              const daySchedules = (monthlySchedule || []).filter(s => {
-                 const dbDate = s.date.split('/');
-                 return `${dbDate[2]}-${dbDate[1]}-${dbDate[0]}` === day.dateString;
-              });
-
-              return (
-                <div
-                  key={day.dateString}
-                  onClick={() => { if(isAdmin) { setSelectedDate(day.dateString); setEditData(null); setModal('schedule'); } }}
-                  className={`bg-surface2 border ${isAdmin ? 'cursor-pointer hover:border-primary/50' : ''} border-white/[0.05] rounded p-1 md:p-2 h-24 md:h-32 overflow-y-auto flex flex-col hide-scrollbar transition-colors`}
-                >
-                  <div className="text-right text-xs md:text-sm font-bold text-white mb-1 opacity-70">{day.dayNumber}</div>
-                                   <div className="space-y-1 flex-1">
-                    {daySchedules.map((s, i) => {
-                      const attended = attendedSet.has(`${s.employee_id}_${day.dateString}`);
-                      const isPastOrToday = day.dateString <= todayStr;
-                      const colorClasses = !isPastOrToday
-                        ? 'bg-warning/20 hover:bg-warning/40 text-warning border-warning/30'
-                        : attended
-                          ? 'bg-success/20 hover:bg-success/40 text-success border-success/30'
-                          : 'bg-danger/20 hover:bg-danger/40 text-danger border-danger/30';
-                      return (
-                        <div
-                          key={i}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if(isAdmin) { setSelectedDate(day.dateString); setEditData(s); setModal('schedule'); }
-                          }}
-                          className={`border ${colorClasses} text-[9px] md:text-xs rounded px-1 py-0.5 md:py-1 truncate cursor-pointer transition-colors`}
-                        >
-                          <span className="font-bold">{s.Name.split(' ')[0]}</span> <span className="opacity-80">({s.start_time}-{s.end_time})</span>
-                        </div>
-                      );
-                    })}
+          {/* 🔥 KOLOM KANAN: PANEL REKAP JUMLAH HARI KARYAWAN */}
+          <div className="w-full lg:w-64 shrink-0">
+            <Card title="Total Hari Jadwal">
+              <p className="text-[10px] text-textmuted mb-3">Periode {period}</p>
+              <div className="space-y-2">
+                {scheduleCountList.length === 0 && (
+                  <p className="text-xs text-textmuted italic">Belum ada karyawan aktif.</p>
+                )}
+                {scheduleCountList.map((emp) => (
+                  <div key={emp.employee_id} className="flex items-center justify-between bg-surface2 rounded-card px-3 py-2 border border-white/[0.05]">
+                    <span className="text-sm truncate pr-2">{emp.name}</span>
+                    <span className={`text-sm font-bold min-w-[2rem] text-center rounded px-2 py-0.5 ${emp.count > 0 ? 'bg-primary/20 text-primary' : 'bg-white/[0.05] text-textmuted'}`}>
+                      {emp.count}
+                    </span>
                   </div>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            </Card>
           </div>
-        </Card>
-{/* 🔥 PANEL REKAP JUMLAH HARI KARYAWAN */}
-        <div className="w-full lg:w-64 shrink-0">
-          <Card title="Total Hari Jadwal">
-            <p className="text-[10px] text-textmuted mb-3">Periode {period}</p>
-            <div className="space-y-2">
-              {scheduleCountList.length === 0 && (
-                <p className="text-xs text-textmuted italic">Belum ada karyawan aktif.</p>
-              )}
-              {scheduleCountList.map((emp) => (
-                <div key={emp.employee_id} className="flex items-center justify-between bg-surface2 rounded-card px-3 py-2 border border-white/[0.05]">
-                  <span className="text-sm truncate pr-2">{emp.name}</span>
-                  <span className={`text-sm font-bold min-w-[2rem] text-center rounded px-2 py-0.5 ${emp.count > 0 ? 'bg-primary/20 text-primary' : 'bg-white/[0.05] text-textmuted'}`}>
-                    {emp.count}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
         </div>
       )}
 
