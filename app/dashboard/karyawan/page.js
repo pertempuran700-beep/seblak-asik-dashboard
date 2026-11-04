@@ -201,6 +201,25 @@ export default function KaryawanPage() {
   };
 
   const calendarDays = useMemo(() => {
+      // 🔥 Hitung jumlah hari jadwal per karyawan aktif pada bulan terpilih (realtime)
+  const scheduleCountList = useMemo(() => {
+    const countMap = {};
+    (monthlySchedule || []).forEach((s) => {
+      // Hanya hitung hari masuk, abaikan Day Off / Cuti
+      if (s.status === 'Day Off' || s.status === 'Cuti') return;
+      countMap[s.employee_id] = (countMap[s.employee_id] || 0) + 1;
+    });
+
+    return (employees || [])
+      .filter((e) => e.status === 'Active')
+      .map((e) => ({
+        employee_id: e.employee_id,
+        name: e.full_name,
+        count: countMap[e.employee_id] || 0,
+      }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [monthlySchedule, employees]);
+    
     const [y, m] = period.split('-');
     const firstDay = new Date(y, Number(m) - 1, 1).getDay();
     const daysInMonth = new Date(y, Number(m), 0).getDate();
@@ -290,7 +309,9 @@ export default function KaryawanPage() {
         <Card>{loading ? <p className="text-center py-8">Memuat...</p> : <Table columns={columns} rows={employees} />}</Card>
       )}
 
-            {tab === 'schedule' && (
+                  {tab === 'schedule' && (
+        <div className="flex flex-col lg:flex-row gap-4 items-start">
+        <div className="flex-1 min-w-0 w-full">
         <Card title={`Kalender Rotasi Kerja — Periode ${period}`}>
           <div className="flex items-center gap-4 mb-3 text-[10px] text-textmuted">
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-success inline-block"></span> Sudah Absen</span>
@@ -345,6 +366,26 @@ export default function KaryawanPage() {
             })}
           </div>
         </Card>
+{/* 🔥 PANEL REKAP JUMLAH HARI KARYAWAN */}
+        <div className="w-full lg:w-64 shrink-0">
+          <Card title="Total Hari Jadwal">
+            <p className="text-[10px] text-textmuted mb-3">Periode {period}</p>
+            <div className="space-y-2">
+              {scheduleCountList.length === 0 && (
+                <p className="text-xs text-textmuted italic">Belum ada karyawan aktif.</p>
+              )}
+              {scheduleCountList.map((emp) => (
+                <div key={emp.employee_id} className="flex items-center justify-between bg-surface2 rounded-card px-3 py-2 border border-white/[0.05]">
+                  <span className="text-sm truncate pr-2">{emp.name}</span>
+                  <span className={`text-sm font-bold min-w-[2rem] text-center rounded px-2 py-0.5 ${emp.count > 0 ? 'bg-primary/20 text-primary' : 'bg-white/[0.05] text-textmuted'}`}>
+                    {emp.count}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+        </div>
       )}
 
       {tab === 'performance' && (
