@@ -60,6 +60,7 @@ function TaskForm({ task, defaultDay, onSuccess, onClose }) {
     task_name: task?.task_name || '',
     day: task?.day || defaultDay,
     is_active: task ? task.is_active : true,
+    points: task ? String(task.points ?? 1) : '1',
   });
 
   async function handleSubmit(e) {
@@ -71,6 +72,7 @@ function TaskForm({ task, defaultDay, onSuccess, onClose }) {
         task_name: form.task_name,
         day: form.day,
         is_active: form.is_active,
+        points: Number(form.points),
       });
       toast?.showToast(task ? 'Tugas berhasil diperbarui' : 'Tugas berhasil ditambahkan');
       onSuccess?.();
@@ -93,6 +95,10 @@ function TaskForm({ task, defaultDay, onSuccess, onClose }) {
         onChange={(e) => setForm({ ...form, day: e.target.value })}
         options={DAYS.map((d) => ({ value: d, label: d === 'Setiap Hari' ? 'Setiap Hari (muncul tiap hari)' : d }))}
       />
+      <Input
+        label="Bobot Poin Tugas (1 = standar, makin sulit makin besar)" type="number" min="1" max="100" step="1" required
+        value={form.points} onChange={(e) => setForm({ ...form, points: e.target.value })}
+      />
       <label className="flex items-center gap-2 text-sm cursor-pointer">
         <input
           type="checkbox" checked={form.is_active}
@@ -100,7 +106,7 @@ function TaskForm({ task, defaultDay, onSuccess, onClose }) {
         />
         Tugas aktif (tampil di checklist karyawan)
       </label>
-      <Button type="submit" full disabled={submitting || !form.task_name.trim()}>
+      <Button type="submit" full disabled={submitting || !form.task_name.trim() || !(Number(form.points) > 0)}>
         {submitting ? 'Menyimpan...' : '💾 Simpan Tugas'}
       </Button>
     </form>
@@ -190,7 +196,7 @@ export default function EmployeeOfTheMonth({ user, isManagement, period }) {
     setBusyId(task.task_id);
     try {
       const res = await api.toggleEotmTask(task.task_id);
-      toast?.showToast(res?.done ? 'Tugas dicentang! +1 poin 🎉' : 'Centang dibatalkan');
+      toast?.showToast(res?.done ? `Tugas dicentang! +${task.points} poin 🎉` : 'Centang dibatalkan');
     } catch (err) {
       toast?.showToast(err.message, 'error');
     } finally {
@@ -296,6 +302,7 @@ export default function EmployeeOfTheMonth({ user, isManagement, period }) {
                       <span className="font-bold mr-2 text-textmuted">#{e.rank}</span>
                       {e.name}
                       {e.employee_id === myId && <span className="text-[10px] text-primary ml-2">(Anda)</span>}
+                      <span className="text-[10px] text-textmuted ml-2">({e.tasks || 0} tugas)</span>
                     </span>
                     <span className="font-bold">{e.count} poin</span>
                   </div>
@@ -306,7 +313,7 @@ export default function EmployeeOfTheMonth({ user, isManagement, period }) {
               ))}
             </div>
             <p className="text-[10px] text-textmuted mt-3">
-              Total {board?.total_done || 0} tugas selesai bulan ini. Poin seri dimenangkan yang lebih dulu mencapainya. Data diperbarui otomatis.
+              Total {board?.total_done || 0} tugas selesai ({board?.total_points || 0} poin) bulan ini. Poin seri dimenangkan yang lebih dulu mencapainya. Data diperbarui otomatis.
             </p>
           </>
         )}
@@ -355,7 +362,10 @@ export default function EmployeeOfTheMonth({ user, isManagement, period }) {
                         </span>
                       )}
                     </span>
-                    {task.day === 'Setiap Hari' && <span className="text-[10px] text-textmuted">Harian</span>}
+                    <span className="text-[10px] text-textmuted whitespace-nowrap">
+                      {task.day === 'Setiap Hari' ? 'Harian · ' : ''}
+                      <span className="font-bold text-warning">+{task.points} poin</span>
+                    </span>
                   </button>
                 );
               })}
@@ -386,6 +396,7 @@ export default function EmployeeOfTheMonth({ user, isManagement, period }) {
                 <div key={t.task_id} className="flex items-center justify-between bg-surface2 rounded-card px-3 py-2 border border-white/[0.05]">
                   <span className={`text-sm truncate pr-2 ${t.is_active ? '' : 'opacity-50 line-through'}`}>
                     {t.task_name}
+                    <span className="text-[10px] ml-2 text-warning font-bold">+{t.points} poin</span>
                     {!t.is_active && <span className="text-[10px] ml-2 no-underline">(nonaktif)</span>}
                   </span>
                   <span className="flex gap-1 shrink-0">
