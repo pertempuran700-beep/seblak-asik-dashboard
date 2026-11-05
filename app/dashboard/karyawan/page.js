@@ -13,6 +13,7 @@ import { Input, Select } from '@/components/ui/Input';
 import EmployeeForm from '@/components/forms/EmployeeForm';
 import PerformanceReviewForm from '@/components/forms/PerformanceReviewForm';
 import PayslipCard from '@/components/PayslipCard';
+import EmployeeOfTheMonth from '@/components/forms/EmployeeOfTheMonth';
 import { formatRupiah, currentMonthYear, formatTanggalPendek } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 
@@ -284,6 +285,7 @@ export default function KaryawanPage() {
     { value: 'performance', label: 'Penilaian Kinerja' },
     { value: 'payroll', label: 'Slip Gaji (Payroll)' },
     { value: 'bonus', label: 'Log Bonus Harian' },
+    { value: 'eotm', label: '🏆 Employee of The Month' },
   ].filter(Boolean);
 
   const myPerformanceRow = performance ? filterOwnData(performance)[0] : null;
@@ -296,7 +298,7 @@ export default function KaryawanPage() {
           <p className="text-sm text-textmuted">Penilaian Kinerja, Jadwal, dan Payroll Otomatis</p>
         </div>
         <div className="flex items-center gap-3">
-          {(tab === 'performance' || tab === 'payroll' || tab === 'bonus' || tab === 'schedule') && (
+          {(tab === 'performance' || tab === 'payroll' || tab === 'bonus' || tab === 'schedule' || tab === 'eotm') && (
             <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} className="bg-surface2 border border-border/50 rounded p-2 text-sm focus:outline-none" />
           )}
           {isOwner && tab === 'list' && <Button onClick={() => { setEditing(null); setModal('employee'); }}>+ Tambah Karyawan</Button>}
@@ -426,6 +428,10 @@ export default function KaryawanPage() {
         </Card>
       )}
 
+      {tab === 'eotm' && (
+        <EmployeeOfTheMonth user={user} isManagement={isAdmin} period={period} />
+      )}
+          
       <Modal open={modal === 'employee'} onClose={() => setModal(null)} title={editing ? 'Edit Karyawan' : 'Tambah Karyawan'}>
         <EmployeeForm employee={editing} onSuccess={refetch} onClose={() => setModal(null)} />
       </Modal>
